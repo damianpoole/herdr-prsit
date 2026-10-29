@@ -7,6 +7,7 @@ import {runOpenCode} from '../dist/agent.js';
 test('OpenCode receives stdin, preserves receipts, and refuses ambiguous restarts',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'prsit-opencode-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const env={...process.env};t.after(()=>{process.env=env;});process.env.PATH=dir+':'+process.env.PATH;process.env.PRSIT_HOME=join(dir,'state');
+  await writeFile(join(dir,'package.json'),JSON.stringify({type:'module'}));
   await writeFile(join(dir,'opencode'),`#!${process.execPath}\nif(process.argv.includes('--help'))console.log('--auto --format');else {let s='';for await(const c of process.stdin)s+=c;console.log(JSON.stringify({type:'message',text:s}));}`,{mode:0o755});
   const w={id:'w',model:'provider/model',timeout:10000};const j={id:'job',worktree:dir};
   const job=join(process.env.PRSIT_HOME,'w','jobs','job');await mkdir(job,{recursive:true});
