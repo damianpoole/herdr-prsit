@@ -1,0 +1,42 @@
+id = "herdr-prsit"
+name = "PR sitter"
+version = "0.1.0"
+min_herdr_version = "0.9.1"
+description = "Durable PR repairs, per-PR Agents sidebar status, and a terminal dashboard"
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["npm", "ci", "--ignore-scripts"]
+
+[[build]]
+command = ["npm", "run", "build"]
+
+[[actions]]
+id = "start"
+title = "PR sitter: start controller here"
+contexts = ["workspace", "pane"]
+command = ["node", "dist/plugin.js", "start"]
+
+[[actions]]
+id = "dashboard"
+title = "PR sitter: dashboard"
+contexts = ["workspace", "pane"]
+command = ["node", "dist/plugin.js", "dashboard"]
+
+[[panes]]
+id = "controller"
+title = "PR sitter controller"
+placement = "tab"
+command = ["sh", "-c", 'exec node "$HERDR_PLUGIN_ROOT/dist/cli.js" run']
+
+[[panes]]
+id = "dashboard"
+title = "PR sitter dashboard"
+placement = "tab"
+command = ["sh", "-c", 'exec node "$HERDR_PLUGIN_ROOT/dist/cli.js" dashboard']
+
+[[panes]]
+id = "watch"
+title = "PR activity"
+placement = "tab"
+command = ["sh", "-c", 'exec node "$HERDR_PLUGIN_ROOT/dist/cli.js" view']

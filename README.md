@@ -6,7 +6,7 @@ Designed to run locally on Linux and macOS. Verification has been performed loca
 
 ## Install
 
-Requires Node **22.19+**, Git, an authenticated `gh`, and Herdr for pane integration. The default agent uses your Pi credentials and `models.json`. OpenCode 2.x is optional.
+Requires Node **22.19+**, Git, an authenticated `gh`, and **Herdr 0.9.1+** for the plugin and Agents sidebar. The default agent uses your Pi credentials and `models.json`. OpenCode 2.x is optional.
 
 ```sh
 git clone git@github.com:damianpoole/herdr-prsit.git
@@ -14,6 +14,7 @@ cd herdr-prsit
 npm ci --ignore-scripts
 npm run build
 npm link
+herdr plugin link .
 prsit doctor
 prsit models
 ```
@@ -53,7 +54,37 @@ prsit watch 123 --repo ~/git/my-project
 
 `watch` validates the checkout against the PR's GitHub host and repository. Pass `--repo /path/to/repo` from elsewhere; full URLs can also reuse a remembered repository mapping. For commands acting on existing watches, ambiguous PR numbers require the displayed watch ID or full URL.
 
-Registration authorizes autonomous local commits, pushes, review replies, addressed-thread resolution, and merging. No work starts until the controller runs. The controller creates a Herdr workspace with a live activity view for each new watch without changing focus. `prsit open 123` opens another view. Agent execution lives in the controller, so closing a view does not stop the agent.
+Registration authorizes autonomous local commits, pushes, review replies, addressed-thread resolution, and merging. No work starts until the controller runs. The workspace running `prsit run` remains the main workspace. Each watched PR gets a plugin-owned activity pane and an entry in Herdr's **Agents sidebar**, visible while you work in other workspaces. Its tab and Agents sidebar names update together from saved watch state and include the PR number, repository, and stage: `handling comments`, `fixing checks`, `review requested`, `publishing fixes`, `blocked`, `merged`, and so on. No sidebar configuration changes are needed with Herdr's default Agents layout. Existing custom Agent filters can still hide entries; the plugin does not replace your filters.
+
+The pane is a view of prsit, not a second agent runtime. The actual Pi Durable/OpenCode work stays in the controller. The backing panes live in tabs in the main workspace, but status is reported to the global Agents sidebar rather than relying on tab names. Selecting a sidebar entry opens its details and recent activity. `prsit open 123` focuses the existing entry or recreates a closed view. Creation by the controller never steals focus. Closing a view leaves work running. Existing standalone workspaces and the earlier tab-only views are left untouched; you can close them manually.
+
+The plugin reports `working` during repairs/publication, `blocked` for work needing intervention, and `idle` while waiting or finished. Both Herdr's seen and unseen completion labels keep the actual PR stage; viewing a merged PR does not turn its label into generic “idle”. If the controller stops, unfinished running watches show `controller stopped` instead of stale activity. Paused and terminal states remain visible. Unwatching releases the sidebar entry, with history retained in the dashboard. Display reporting never authorizes a push or merge.
+
+## Herdr plugin and dashboard
+
+After building and linking the plugin from the install steps, these actions are available in Herdr:
+
+```sh
+herdr plugin action invoke herdr-prsit.start
+herdr plugin action invoke herdr-prsit.dashboard
+```
+
+`start` opens a controller pane in a tab named **PR sitter** in the invoking workspace. `prsit stop` gracefully stops that controller from any terminal using the same state directory; it works even when you cannot locate the pane. You can instead run `prsit run` in an existing pane. The dashboard action opens or focuses one **PR SITTER DASHBOARD** board in a tab named **PR dashboard** in the controller's workspace. Repeating the action reuses that board. Per-PR tabs are named **PR #123 owner/repo — handling comments** (using the current stage), and their panes are headed **PR ACTIVITY** and show only that PR. `prsit dashboard` runs the same board in your current terminal, including outside Herdr for inspecting state and changing local watch controls. `open` requires Herdr. Plugin actions and `prsit open` must run in the controller's Herdr session; a different session is rejected rather than interpreting its workspace IDs locally.
+
+The dashboard lists watches and their stages, shows the selected PR's status message, repair worktree, and recent activity, and refreshes automatically. Its controls are:
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` or `j` / `k` | Select a PR |
+| `p` | Pause the selected watch |
+| `r` | Resume its checkpointed work |
+| `t` | Request retry using the existing blocked-work protocol |
+| `o` | Focus or reopen its activity pane |
+| `q` / `Ctrl+C` | Close this view; leave the controller running |
+
+Use `prsit watch` to register new PRs and `prsit unwatch` to remove them. There is no merge button or second repair engine in the dashboard. All controls use the same local state as the CLI. A dashboard opened while the controller is stopped can queue pause/resume/retry controls, but work only progresses when the controller runs.
+
+The plugin's manifest is `herdr-plugin.toml`; it declares controller, dashboard, and per-PR pane entrypoints and two menu actions. It adds no startup daemon or hosted service. Plugin and CLI share `$PRSIT_HOME` (or the usual default), Pi credentials, and existing watch history. For a custom state directory, launch the plugin actions with the same `PRSIT_HOME` as the controller; menu actions use the environment inherited by Herdr. Background UI errors retry independently of runtime supervision. Closing a PR pane removes its sidebar entry; `prsit open` brings it back. After restarting Herdr, restart `prsit run` to restore monitoring and views.
 
 ```sh
 prsit watch https://github.com/owner/repo/pull/456 \
@@ -67,11 +98,13 @@ OpenCode runs in its own saved session with `run --format json --auto`. Its outp
 | Command | Behaviour |
 |---|---|
 | `run` | Run continuously inside Herdr; Ctrl+C checkpoints pending work |
+| `stop` | Request graceful controller shutdown and checkpoint pending work |
 | `run --headless` | Run without Herdr layout, useful for a service or test host |
 | `watch <number or url>` | Register a PR and its repository/harness configuration |
 | `status [--json]` | Controller liveness and each watch's last published status |
 | `logs <watch> [-f]` | Activity and native agent text/tool events |
-| `open <watch>` | Create a new Herdr activity workspace |
+| `open <watch>` | Focus or reopen the PR’s Agents sidebar activity pane |
+| `dashboard` | Interactive PR stages, details, recent activity, and local controls |
 | `pause <watch>` | Close the durable runtime, preserving unfinished work |
 | `resume <watch>` | Reopen and resume the same checkpointed work |
 | `retry <watch>` | Resume blocked publication; otherwise start a fresh repair and reset retry counts |
@@ -112,6 +145,7 @@ GitHub repository protection rules remain authoritative. The head guard detects 
 
 State lives at `$PRSIT_HOME`, otherwise `$XDG_STATE_HOME/herdr-prsit` or `~/.local/state/herdr-prsit`:
 
+- `herdr-views/`: session-scoped pane creation receipts, independent of expiring sidebar metadata. If a creation result is lost, the controller refuses to create another pane until the existing view reports its identity.
 - `watches/`: repository mappings and per-PR settings.
 - `<watch>/durable.sqlite`: authoritative task and agent history.
 - `<watch>/status.json`: last status snapshot for the CLI.
@@ -138,7 +172,7 @@ npm audit
 npm pack
 ```
 
-Tests exercise the actual Pi Durable SQLite scheduler and native coding tools using a deterministic model fixture, restart recovery, head races, deduplicated review replies, pagination, real Git worktrees and local pushes, and the Herdr command contract. Verification is local only; this repository has no GitHub Actions workflow. The suite has passed on Linux. Run the same commands on a MacBook to validate macOS. No credentials or live GitHub writes are needed for the normal suite.
+Tests exercise the actual Pi Durable SQLite scheduler and native coding tools using a deterministic model fixture, restart recovery, head races, deduplicated review replies, pagination, real Git worktrees and local pushes, the Herdr plugin/Agents reporting contract, and dashboard controls. Verification is local only; this repository has no GitHub Actions workflow. The suite has passed on Linux. Run the same commands on a MacBook to validate macOS. No credentials or live GitHub writes are needed for the normal suite.
 
 An optional real-provider smoke test repairs a temporary local repository and validates/pushes to a local bare remote. It makes model requests using your Pi authentication but does not write to GitHub:
 
