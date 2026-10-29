@@ -22,6 +22,7 @@ import { GitHub } from "./github.js";
 import { prepare, validateChanges, push } from "./git.js";
 import { pending, mergeBlocker, validateReport } from "./policy.js";
 import { confirmPublication } from "./publication.js";
+import { observeCodexReview } from "./codex-review.js";
 import { modelRef, prompt, runNative, runOpenCode } from "./agent.js";
 
 export const initialState = (): State => ({
@@ -131,6 +132,7 @@ export async function openRuntime(
       poll: (t, r) =>
         phase(t, r, async (s) => {
           const snap = await github.snapshot();
+          if (w.requireCodexReview) observeCodexReview(snap, s);
           if (snap.state !== "OPEN") {
             await log(w, `PR ${snap.state.toLowerCase()}`);
             await r.commit(
@@ -193,10 +195,31 @@ export async function openRuntime(
             });
             return;
           }
+          if (
+            w.requireCodexReview &&
+            (s.codexReviewRequest?.head !== snap.head || s.codexReviewRequest.phase === "pending")
+          ) {
+            if (s.codexReviewRequest?.head !== snap.head) {
+              // Save the baseline before any request can produce new reactions.
+              if (s.codexReview) s.codexReview.cycle = undefined;
+              s.codexReviewRequest = { head: snap.head, phase: "pending" };
+              await transition(r, { ...s, message: "Requesting fresh Codex review" });
+              return;
+            }
+            await github.requestCodexReview(snap.head);
+            s.codexReviewRequest = { head: snap.head, phase: "requested" };
+            await log(w, `Codex review requested for ${snap.head}`);
+            await transition(r, {
+              ...s,
+              message: "Codex review requested; waiting for fresh review",
+            });
+            return;
+          }
           const blocker = mergeBlocker(w, snap, s);
           if (!blocker) {
             // Read again immediately before the head-guarded GitHub merge operation.
             const fresh = await github.snapshot();
+            if (w.requireCodexReview) observeCodexReview(fresh, s);
             const changed = fresh.head !== snap.head || mergeBlocker(w, fresh, s);
             if (!changed) {
               await log(w, `Submitting merge for ${fresh.head}`);
@@ -330,6 +353,19 @@ export async function openRuntime(
             if (live && live.fingerprint !== item.fingerprint) continue; // Edited feedback needs another pass.
             if (!live && item.kind === "thread") continue; // Already resolved externally.
             await github.respond(item, reply.body, reply.resolve, hash([w.id, j.id, item.key]));
+          }
+          if (w.requireCodexReview && j.publishHead !== j.snapshot.head) {
+            if (!j.codexReviewBaselineSaved) {
+              // Persist the new-head baseline BEFORE requesting review. On replay,
+              // reactions to our request must not be absorbed into a new baseline.
+              observeCodexReview(fresh, s);
+              j.codexReviewBaselineSaved = true;
+              await transition(r, { ...s, message: "Fixes published; requesting Codex review" });
+              return;
+            }
+            await github.requestCodexReview(j.publishHead!);
+            s.codexReviewRequest = { head: j.publishHead!, phase: "requested" };
+            await log(w, `Codex review requested for ${j.publishHead}`);
           }
           for (const item of j.items) {
             // A failed check with no code change must get another bounded attempt, not disappear.

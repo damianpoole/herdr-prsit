@@ -80,6 +80,20 @@ OpenCode runs in its own saved session with `run --format json --auto`. Its outp
 
 Watch options: `--interval 15m`, `--timeout 30m`, `--max-attempts 3`, `--merge squash|merge|rebase`, `--test '<shell command>'`, `--allow-no-checks`.
 
+For personal projects, `--require-codex-review` adds an optional Codex reaction gate:
+
+```sh
+prsit watch 123 --require-codex-review --allow-no-checks --interval 30s
+```
+
+Omit `--allow-no-checks` if the repository has CI. Required reviewers, checks, unresolved threads, and GitHub merge protections still apply; existing watches and the default workflow are unchanged.
+
+On its first actionable poll, the controller establishes a baseline and requests a fresh review automatically. If there is pending feedback, it repairs that first. An existing thumbs-up at startup does not permit immediate merging. The gate must observe a **new** 👀 reaction from `chatgpt-codex-connector[bot]`, followed by a new 👍 on the same PR description or exact `@codex review` comment, with no Codex 👀 remaining. Existing reactions do not qualify. Shorter polling helps avoid missing the eyes phase; a review that finishes entirely between polls needs another review. Exact `@codex review` comments are treated as review requests rather than repair feedback only in this mode.
+
+Every observed head change (including a repair push) invalidates the review cycle. Evidence survives controller restarts; missing or unreadable reaction data never grants approval. With this option enabled, after publishing a changed head and replying to the addressed feedback, the controller automatically posts `@codex review`. It saves the new-head baseline before posting, checks the live PR head, and uses a stable operation marker to avoid duplicate requests after interruption or retry. Reactions on these marked request comments count toward the gate. Further findings go through the same repair → push → request-review loop. A repair that creates no new commit does not request another review if this head already has a request. Post-push request failures block publication; `prsit retry` resumes it without rerunning the repair. Initial request failures retry at the poll interval. It also requests a fresh review when it observes an externally changed head once pending feedback has been addressed. Each head gets at most one automatically posted request under normal replay; if a review is missed between polls or Codex never responds, the watch keeps waiting rather than repeatedly posting requests.
+
+This is a conservative reaction-based signal, **not commit-bound approval**: GitHub reactions have no reviewed commit SHA. Concurrent reviews or head changes between polls cannot be attributed conclusively. Use GitHub-enforced reviews/checks where that guarantee is required. Reactions are rechecked in the final fresh snapshot before the existing head-guarded merge.
+
 `retry` is for blocked work, not an already running job. A blocked publication resumes its saved validated commit and report without rerunning the agent; genuine head changes still block publication. After a push, the controller retries an unchanged old GitHub head up to ten times at one-second intervals before blocking. Other blocked phases start a fresh repair. A blocked watch notices a retry within about five seconds. Pause/resume controls are noticed within about one second, except while the controller is opening another runtime. A resumed sleeping watch keeps its original poll deadline. The repair timeout is a wall-clock deadline and includes time spent stopped.
 
 ## How it works
