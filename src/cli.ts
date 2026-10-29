@@ -40,6 +40,7 @@ Watch options:
   --max-attempts <3> Maximum automatic repairs of the same feedback key
   --timeout <30m>    Maximum duration of each repair
   --allow-no-checks  Permit merging a repository that has no checks
+  --require-codex-review  Request fresh Codex reviews and require an observed thumbs-up
 
 Registration authorizes commits, pushes, review replies, thread resolution, and merge.
 State: PRSIT_HOME or $XDG_STATE_HOME/herdr-prsit. Requires Node >=22.19, git, gh.
@@ -69,6 +70,7 @@ export async function main(args = process.argv.slice(2)) {
       timeout: { type: "string" },
       "allow-no-checks": { type: "boolean" },
       follow: { type: "boolean", short: "f" },
+      "require-codex-review": { type: "boolean" },
     },
   });
   const command = p[0];
@@ -139,6 +141,7 @@ export async function main(args = process.argv.slice(2)) {
       interval: duration(v.interval ?? "15m"),
       merge: merge as Watch["merge"],
       allowNoChecks: v["allow-no-checks"] ?? false,
+      requireCodexReview: v["require-codex-review"] ?? false,
       test: v.test ?? null,
       maxAttempts: attempts,
       timeout: duration(v.timeout ?? "30m"),

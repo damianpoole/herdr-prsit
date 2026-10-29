@@ -1,4 +1,5 @@
 import type { Watch, Snapshot, State, Report, Feedback } from "./types.js";
+import { codexReviewBlocker } from "./codex-review.js";
 export function pending(s: Snapshot, state: State) {
   return s.feedback.filter((i) => state.processed[i.key] !== i.fingerprint);
 }
@@ -10,6 +11,10 @@ export function mergeBlocker(w: Watch, s: Snapshot, state: State): string | unde
   if (s.unresolved.length) return "Unresolved review threads";
   if (s.reviewDecision === "CHANGES_REQUESTED" || s.reviewDecision === "REVIEW_REQUIRED")
     return "Waiting for required review";
+  if (w.requireCodexReview) {
+    const blocker = codexReviewBlocker(s, state);
+    if (blocker) return blocker;
+  }
   if (!s.checks.length && !w.allowNoChecks)
     return "No checks reported (use --allow-no-checks only for repositories without CI)";
   if (s.checks.some((c) => !["SUCCESS", "NEUTRAL", "SKIPPED"].includes(c.state)))

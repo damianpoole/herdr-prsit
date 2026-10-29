@@ -1,8 +1,11 @@
 import { exec, hash } from "./io.js";
+import { isCodexAuthor, codexStatus, reviewRequestBody } from "./codex-status.js";
 import type { Watch, Snapshot, Feedback } from "./types.js";
 
 type Obj = Record<string, any>;
 const marker = "<!-- herdr-prsit:";
+const codexRequest = (body: string) =>
+  /^\s*@codex\s+review\s*(?:<!-- herdr-prsit:codex-review:[a-f0-9]+ -->\s*)?$/i.test(body);
 export function parsePR(url: string) {
   const u = new URL(url);
   const m = u.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/);
@@ -83,6 +86,16 @@ export class GitHub {
       this.pages(`repos/${this.w.owner}/${this.w.repo}/pulls/${this.w.number}/reviews`),
     ]);
     const p = JSON.parse(view.stdout);
+    const codex = this.w.requireCodexReview
+      ? codexStatus(
+          this.w,
+          p.headRefOid,
+          comments.map((c) => ({ id: c.id, body: c.body, created_at: c.created_at, user: c.user })),
+        )
+      : undefined;
+    const codexReactions = this.w.requireCodexReview
+      ? await this.codexReactions(comments)
+      : undefined;
     const feedback: Feedback[] = [];
     for (const t of threads.filter((t) => !t.isResolved)) {
       const relevant = t.comments.nodes.filter((c: Obj) => !c.body.includes(marker));
@@ -97,7 +110,12 @@ export class GitHub {
         canResolve: t.viewerCanResolve,
       });
     }
-    for (const c of comments.filter((c) => !c.body.includes(marker)))
+    for (const c of comments.filter(
+      (c) =>
+        !c.body.includes(marker) &&
+        !codex?.informational.has(c.id) &&
+        !(this.w.requireCodexReview && codexRequest(c.body)),
+    ))
       feedback.push({
         key: `comment:${c.id}`,
         fingerprint: hash([c.updated_at, c.body]),
@@ -155,8 +173,28 @@ export class GitHub {
       baseBranch: p.baseRefName,
       checks,
       feedback,
+      codexReactions,
+      codexSummary: codex?.summary,
+      codexRequestedAt: codex?.requestedAt,
       unresolved: threads.filter((t) => !t.isResolved).map((t) => t.id),
     };
+  }
+  async codexReactions(comments: Obj[]): Promise<NonNullable<Snapshot["codexReactions"]>> {
+    const base = `repos/${this.w.owner}/${this.w.repo}/issues`;
+    const sources = [
+      `${base}/${this.w.number}/reactions`,
+      ...comments
+        .filter((c) => codexRequest(c.body))
+        .map((c) => `${base}/comments/${c.id}/reactions`),
+    ];
+    const pages = await Promise.all(
+      sources.map(async (source) =>
+        (await this.pages(source))
+          .filter((r) => isCodexAuthor(r.user, this.w.host))
+          .map((r) => ({ id: String(r.id), content: r.content, createdAt: r.created_at, source })),
+      ),
+    );
+    return pages.flat();
   }
   async ciLogs(s: Snapshot): Promise<string> {
     const runs = new Set(
@@ -191,6 +229,19 @@ export class GitHub {
       }
     }
     return logs.join("\n").slice(-200_000);
+  }
+  async requestCodexReview(head: string) {
+    const base = `repos/${this.w.owner}/${this.w.repo}`;
+    const body = reviewRequestBody(this.w, head);
+    const comments = await this.pages(`${base}/issues/${this.w.number}/comments`);
+    // Check the live head even on replay. Never request a review for a superseded push.
+    const pr = await this.api(`${base}/pulls/${this.w.number}`);
+    if (pr.state !== "open" || pr.head?.sha !== head)
+      throw new Error(
+        `Cannot request Codex review: PR is closed or head changed (expected ${head}, observed ${pr.head?.sha})`,
+      );
+    if (!comments.some((c) => c.body === body))
+      await this.api(`${base}/issues/${this.w.number}/comments`, { body });
   }
   async respond(item: Feedback, body: string, resolve: boolean, operation: string) {
     const stamp = `${marker}${operation} -->`;

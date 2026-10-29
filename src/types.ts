@@ -12,6 +12,7 @@ export interface Watch {
   interval: number;
   merge: "squash" | "merge" | "rebase";
   allowNoChecks: boolean;
+  requireCodexReview?: boolean;
   test: string | null;
   maxAttempts: number;
   timeout: number;
@@ -27,6 +28,9 @@ export interface Feedback {
   canResolve?: boolean;
 }
 export interface Snapshot {
+  codexSummary?: { head: string; status: string; clean: boolean; completedAt?: string };
+  codexRequestedAt?: string;
+  codexReactions?: { id: string; content: string; createdAt: string; source: string }[];
   head: string;
   state: string;
   draft: boolean;
@@ -55,8 +59,15 @@ export interface Job {
   started: number;
   result?: Report;
   publishHead?: string;
+  codexReviewBaselineSaved?: boolean;
 }
 export type State = {
+  codexReviewRequest?: { head: string; phase: "pending" | "requested" };
+  codexReview?: {
+    head: string;
+    seen: string[];
+    cycle?: { eyes: string; source: string; startedAt: string; excluded: string[] };
+  };
   blockedAt?: number;
   processed: Record<string, string>;
   attempts: Record<string, number>;
