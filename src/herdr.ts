@@ -78,8 +78,38 @@ export async function findView(w: Watch): Promise<Pane | undefined> {
   );
 }
 
+// Separate from the replaceable receipt: never reclaim a lock automatically,
+// since a slow or interrupted creator may still have a live pane creation.
+async function withViewLock<T>(path: string, action: () => Promise<T>): Promise<T> {
+  await mkdir(join(home(), "herdr-views"), { recursive: true, mode: 0o700 });
+  const lock = `${path}.lock`;
+  try {
+    await writeFile(lock, JSON.stringify({ pid: process.pid }), { flag: "wx", mode: 0o600 });
+  } catch (e: any) {
+    if (e.code === "EEXIST")
+      throw new Error(
+        "This Herdr view is already being opened or released; try again shortly. If its owner exited, inspect existing PR sitter tabs before resetting its local view lock.",
+      );
+    throw e;
+  }
+  try {
+    return await action();
+  } finally {
+    await rm(lock);
+  }
+}
+
 export async function openPluginView(kind: ViewKind, workspace: string, focus: boolean, w?: Watch) {
   const path = receiptPath(kind, w);
+  return withViewLock(path, () => openLockedView(path, kind, workspace, focus, w));
+}
+async function openLockedView(
+  path: string,
+  kind: ViewKind,
+  workspace: string,
+  focus: boolean,
+  w?: Watch,
+) {
   const receipt = await optional<ViewReceipt>(path);
   const live = await panes();
   const tokens = identity(kind, w);
@@ -170,21 +200,23 @@ export async function markPluginView(kind: ViewKind, pane: string, w?: Watch) {
 export const markView = (w: Watch, pane: string) => markPluginView("watch", pane, w);
 export async function releasePluginView(kind: ViewKind, pane: string, w?: Watch) {
   const path = receiptPath(kind, w);
-  const receipt = await optional<ViewReceipt>(path);
-  if (receipt?.pane === pane) await rm(path, { force: true });
-  await herdrCommand([
-    "pane",
-    "report-metadata",
-    pane,
-    "--source",
-    `custom:prsit:${w?.id ?? "dashboard"}`,
-    "--clear-token",
-    "prsit_view",
-    "--clear-token",
-    "prsit_watch",
-    "--clear-token",
-    "prsit_home",
-  ]);
+  return withViewLock(path, async () => {
+    const receipt = await optional<ViewReceipt>(path);
+    if (receipt?.pane === pane) await rm(path, { force: true });
+    await herdrCommand([
+      "pane",
+      "report-metadata",
+      pane,
+      "--source",
+      `custom:prsit:${w?.id ?? "dashboard"}`,
+      "--clear-token",
+      "prsit_view",
+      "--clear-token",
+      "prsit_watch",
+      "--clear-token",
+      "prsit_home",
+    ]);
+  });
 }
 
 function prLabel(w: Watch, stage: string) {

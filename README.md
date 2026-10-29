@@ -159,7 +159,7 @@ GitHub repository protection rules remain authoritative. The head guard detects 
 
 State lives at `$PRSIT_HOME`, otherwise `$XDG_STATE_HOME/herdr-prsit` or `~/.local/state/herdr-prsit`:
 
-- `herdr-views/`: session-scoped pane creation receipts, independent of expiring sidebar metadata. If a creation result is lost, the controller refuses to create another pane until the existing view reports its identity.
+- `herdr-views/`: session-scoped pane creation receipts, independent of expiring sidebar metadata. If a creation result is lost, the controller refuses to create another pane until the existing view reports its identity. Separate per-view `.lock` files serialize receipt reconciliation, creation, and release across processes; a concurrent caller must retry. Locks are removed on normal completion or failure, but are not automatically reclaimed after a crash. Only remove an abandoned lock after confirming its owner has exited and inspecting existing PR sitter tabs; retain any `opening` receipt until the view identity is reconciled.
 - `watches/`: repository mappings and per-PR settings.
 - `<watch>/durable.sqlite`: authoritative task and agent history.
 - `<watch>/status.json`: last status snapshot for the CLI.

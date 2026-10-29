@@ -1,15 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   openView,
+  openPluginView,
   requireHerdr,
   currentWorkspace,
   SidebarReporter,
   markView,
 } from "../dist/herdr.js";
+import { exec } from "../dist/io.js";
+import { setTimeout as delay } from "node:timers/promises";
 import { activityLabel, presentation } from "../dist/presentation.js";
 import { pluginAction } from "../dist/plugin.js";
 import { acquire, controllerInfo, socketPath, viewWorkspace } from "../dist/controller.js";
@@ -36,7 +39,14 @@ const a=process.argv.slice(2),get=k=>a[a.indexOf(k)+1];
 appendFileSync(process.env.FIXTURE_LOG,JSON.stringify(a)+'\\n');
 if(process.env.FIXTURE_FAIL && a.includes(process.env.FIXTURE_FAIL)) {process.stderr.write('fixture unavailable');process.exit(1);}
 const state=JSON.parse(readFileSync(process.env.FIXTURE_STATE,'utf8'));let result={type:'ok'};
-if(a[0]==='pane'&&a[1]==='list')result={panes:state.panes};
+if(a[0]==='pane'&&a[1]==='list') {
+ result={panes:state.panes};
+ if(process.env.FIXTURE_LIST_BARRIER) {
+  writeFileSync(process.env.FIXTURE_LIST_BARRIER+'.ready','');
+  while(!((await import('node:fs')).existsSync(process.env.FIXTURE_LIST_BARRIER)))
+   await new Promise(resolve=>setTimeout(resolve,10));
+ }
+}
 if(a[0]==='pane'&&a[1]==='get')result={pane:state.panes.find(p=>p.pane_id===a[2])};
 if(a[0]==='plugin'&&a[1]==='pane'&&a[2]==='open') {
   const pane={pane_id:'opaque:p'+(state.panes.length+1),terminal_id:'terminal-'+(state.panes.length+1),tab_id:'opaque:t'+(state.panes.length+1),workspace_id:get('--workspace'),tokens:{}};
@@ -306,3 +316,49 @@ test("dashboard action focuses one existing dashboard instead of creating one pe
     ),
   );
 });
+
+for (const kind of ["watch", "dashboard"]) {
+  test(`${kind} stale receipt replacement is locked across processes`, async (t) => {
+    const { dir, w, calls } = await fixture(t);
+    const watch = kind === "watch" ? w : undefined;
+    await openPluginView(kind, "main", false, watch);
+    // The old pane was closed without releasing its saved open receipt.
+    await writeFile(process.env.FIXTURE_STATE, JSON.stringify({ panes: [] }));
+    const barrier = join(dir, "list-barrier");
+    process.env.FIXTURE_LIST_BARRIER = barrier;
+    const opening = openPluginView(kind, "main", false, watch);
+    try {
+      for (let i = 0; ; i++) {
+        try {
+          await readFile(`${barrier}.ready`);
+          break;
+        } catch (e) {
+          if (e.code !== "ENOENT" || i >= 500) throw e;
+          await delay(10);
+        }
+      }
+      // A separate CLI process must not read/delete the stale receipt while
+      // the first caller is reconciling it, even before it writes "opening".
+      const script = `
+        import { openPluginView } from ${JSON.stringify(new URL("../dist/herdr.js", import.meta.url).href)};
+        delete process.env.FIXTURE_LIST_BARRIER;
+        try {
+          await openPluginView(${JSON.stringify(kind)}, "main", false, ${JSON.stringify(watch) ?? "undefined"});
+          process.exitCode = 1;
+        } catch (e) {
+          if (!/already being opened or released/.test(String(e))) throw e;
+        }
+      `;
+      await exec(process.execPath, ["--input-type=module", "-e", script]);
+    } finally {
+      delete process.env.FIXTURE_LIST_BARRIER;
+      await writeFile(barrier, "");
+      await opening;
+    }
+    assert.equal((await calls()).filter((a) => a[2] === "open").length, 2);
+    assert.equal(await openPluginView(kind, "main", false, watch), "opaque:p1");
+    assert.equal((await calls()).filter((a) => a[2] === "open").length, 2);
+    const files = await readdir(join(process.env.PRSIT_HOME, "herdr-views"));
+    assert.ok(!files.some((name) => name.endsWith(".lock")));
+  });
+}
