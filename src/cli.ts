@@ -6,12 +6,15 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { mkdir, writeFile, open } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
-import { home, watches, findWatch, optional, atomic, watchDir, exec, hash } from "./io.js";
+import { home, watches, findWatch, optional, watchDir, exec, hash } from "./io.js";
 import { GitHub } from "./github.js";
 import { discover } from "./git.js";
 import { resolvePR } from "./pr.js";
 import { models, modelRef } from "./agent.js";
-import { daemon, ping } from "./daemon.js";
+import { daemon } from "./daemon.js";
+import { ping, viewWorkspace, stopController } from "./controller.js";
+import { controlWatch, type WatchAction } from "./presentation.js";
+import { dashboard } from "./dashboard.js";
 import { openView } from "./herdr.js";
 import type { Watch, State } from "./types.js";
 import type { Control } from "./runtime.js";
@@ -20,8 +23,10 @@ const help = `herdr-prsit — durable PR babysitting in your terminal
 
   prsit run [--headless]                    Run the controller inside Herdr
   prsit watch <number | URL> [options]    Register a PR for autonomous repair and merge
+  prsit stop                              Checkpoint and stop the controller
+  prsit dashboard                         Interactive PR list and controls
   prsit status [--json]                     Show all watches
-  prsit open <watch ID | PR number>         Open a live view in a new Herdr workspace
+  prsit open <watch ID | PR number>         Focus or reopen the PR sidebar entry
   prsit logs <watch ID | PR number> [-f]     Show the activity log
   prsit pause <watch>                       Checkpoint and pause work
   prsit resume <watch>                      Resume checkpointed work
@@ -80,6 +85,22 @@ export async function main(args = process.argv.slice(2)) {
   }
   if (command === "run") {
     await daemon(v.headless);
+    return;
+  }
+  if (command === "stop") {
+    console.log(
+      (await stopController())
+        ? "Controller shutdown requested; pending work will be checkpointed."
+        : "Controller is already stopped.",
+    );
+    return;
+  }
+  if (command === "dashboard") {
+    await dashboard();
+    return;
+  }
+  if (command === "view") {
+    await dashboard(await findWatch(process.env.PRSIT_WATCH_ID ?? ""));
     return;
   }
   if (command === "watch") {
@@ -190,15 +211,14 @@ export async function main(args = process.argv.slice(2)) {
   }
   if (["pause", "resume", "retry", "unwatch"].includes(command)) {
     const w = await findWatch(p[1] ?? "");
-    await atomic(join(watchDir(w), "control.json"), {
-      mode: command === "pause" ? "paused" : command === "unwatch" ? "removed" : "running",
-      ...(command === "retry" ? { retryAt: Date.now() } : {}),
-    });
+    await controlWatch(w, command as WatchAction);
     console.log(`${command}: ${w.url}`);
     return;
   }
   if (command === "open") {
-    console.log(`Herdr pane: ${await openView(await findWatch(p[1] ?? ""))}`);
+    console.log(
+      `Herdr pane: ${await openView(await findWatch(p[1] ?? ""), await viewWorkspace())}`,
+    );
     return;
   }
   if (command === "logs") {

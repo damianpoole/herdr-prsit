@@ -13,7 +13,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "herdr-plugin.toml"
   ],
   "type": "module",
   "scripts": {
