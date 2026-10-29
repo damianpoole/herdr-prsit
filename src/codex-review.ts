@@ -30,6 +30,20 @@ export function codexReviewBlocker(s: Snapshot, state: State): string | undefine
   const cycle = evidence?.cycle;
   if (!s.codexReactions) return "Codex review reactions unavailable";
   if (s.codexReactions.some((r) => r.content === "eyes")) return "Codex review is in progress";
+  const summary = s.codexSummary;
+  if (summary?.head === s.head) {
+    if (summary.status !== "completed" || !summary.clean)
+      return "Waiting for Codex to complete review without findings";
+    const requestedAt = Date.parse(s.codexRequestedAt ?? "");
+    const completedAt = Date.parse(summary.completedAt ?? "");
+    if (
+      state.codexReviewRequest?.head === s.head &&
+      state.codexReviewRequest.phase === "requested" &&
+      completedAt > requestedAt &&
+      s.codexReactions.some((r) => r.content === "+1" && Date.parse(r.createdAt) > requestedAt)
+    )
+      return undefined;
+  }
   if (evidence?.head !== s.head || !cycle)
     return "Waiting to observe a fresh Codex review (eyes then thumbs-up)";
   const approved = s.codexReactions.some(

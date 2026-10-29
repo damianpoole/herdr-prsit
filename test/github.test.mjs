@@ -93,7 +93,7 @@ test("Codex reactions use paginated PR and exact request-comment sources and onl
         id: 1,
         content: "+1",
         created_at: "2026-10-29T19:00:00Z",
-        user: { login: "chatgpt-codex-connector[bot]", type: "Bot" },
+        user: { login: "chatgpt-codex-connector[bot]", id: 199175422, type: "Bot" },
       },
       { id: 2, content: "+1", user: { login: "someone", type: "User" } },
       { id: 3, content: "+1", user: { login: "chatgpt-codex-connector[bot]", type: "User" } },
@@ -152,4 +152,17 @@ test("Codex re-review requests reconcile a lost response and track marked commen
     "repos/o/r/issues/comments/42/reactions",
     "repos/o/r/issues/comments/43/reactions",
   ]);
+});
+
+test("real Codex reaction identity is accepted even when GitHub labels it User", async () => {
+  const gh = new GitHub(w);
+  gh.pages = async () => [
+    {
+      id: 609749654,
+      content: "+1",
+      created_at: "2026-10-29T19:47:21Z",
+      user: { login: "chatgpt-codex-connector[bot]", id: 199175422, type: "User" },
+    },
+  ];
+  assert.equal((await gh.codexReactions([])).length, 1);
 });

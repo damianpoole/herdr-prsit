@@ -1,4 +1,5 @@
 import { exec, hash } from "./io.js";
+import { isCodexAuthor, codexStatus, reviewRequestBody } from "./codex-status.js";
 import type { Watch, Snapshot, Feedback } from "./types.js";
 
 type Obj = Record<string, any>;
@@ -85,6 +86,13 @@ export class GitHub {
       this.pages(`repos/${this.w.owner}/${this.w.repo}/pulls/${this.w.number}/reviews`),
     ]);
     const p = JSON.parse(view.stdout);
+    const codex = this.w.requireCodexReview
+      ? codexStatus(
+          this.w,
+          p.headRefOid,
+          comments.map((c) => ({ id: c.id, body: c.body, created_at: c.created_at, user: c.user })),
+        )
+      : undefined;
     const codexReactions = this.w.requireCodexReview
       ? await this.codexReactions(comments)
       : undefined;
@@ -103,7 +111,10 @@ export class GitHub {
       });
     }
     for (const c of comments.filter(
-      (c) => !c.body.includes(marker) && !(this.w.requireCodexReview && codexRequest(c.body)),
+      (c) =>
+        !c.body.includes(marker) &&
+        !codex?.informational.has(c.id) &&
+        !(this.w.requireCodexReview && codexRequest(c.body)),
     ))
       feedback.push({
         key: `comment:${c.id}`,
@@ -163,6 +174,8 @@ export class GitHub {
       checks,
       feedback,
       codexReactions,
+      codexSummary: codex?.summary,
+      codexRequestedAt: codex?.requestedAt,
       unresolved: threads.filter((t) => !t.isResolved).map((t) => t.id),
     };
   }
@@ -177,7 +190,7 @@ export class GitHub {
     const pages = await Promise.all(
       sources.map(async (source) =>
         (await this.pages(source))
-          .filter((r) => r.user?.login === "chatgpt-codex-connector[bot]" && r.user?.type === "Bot")
+          .filter((r) => isCodexAuthor(r.user, this.w.host))
           .map((r) => ({ id: String(r.id), content: r.content, createdAt: r.created_at, source })),
       ),
     );
@@ -219,8 +232,7 @@ export class GitHub {
   }
   async requestCodexReview(head: string) {
     const base = `repos/${this.w.owner}/${this.w.repo}`;
-    const stamp = `${marker}codex-review:${hash([this.w.id, head])} -->`;
-    const body = `@codex review\n\n${stamp}`;
+    const body = reviewRequestBody(this.w, head);
     const comments = await this.pages(`${base}/issues/${this.w.number}/comments`);
     // Check the live head even on replay. Never request a review for a superseded push.
     const pr = await this.api(`${base}/pulls/${this.w.number}`);

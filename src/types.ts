@@ -28,6 +28,8 @@ export interface Feedback {
   canResolve?: boolean;
 }
 export interface Snapshot {
+  codexSummary?: { head: string; status: string; clean: boolean; completedAt?: string };
+  codexRequestedAt?: string;
   codexReactions?: { id: string; content: string; createdAt: string; source: string }[];
   head: string;
   state: string;
