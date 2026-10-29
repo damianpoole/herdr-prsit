@@ -54,7 +54,8 @@ interface Pane {
 }
 type ViewKind = "watch" | "dashboard";
 interface ViewReceipt {
-  phase: "opening" | "open";
+  phase: "opening" | "open" | "released";
+  retired?: string[];
   pane?: string;
   terminal?: string;
 }
@@ -72,9 +73,12 @@ async function panes(): Promise<Pane[]> {
 }
 export async function findView(w: Watch): Promise<Pane | undefined> {
   const tokens = identity("watch", w);
+  const receipt = await optional<ViewReceipt>(receiptPath("watch", w));
   return (await panes()).find(
     (p) =>
-      p.tokens?.prsit_watch === tokens.prsit_watch && p.tokens?.prsit_home === tokens.prsit_home,
+      !receipt?.retired?.includes(p.pane_id) &&
+      p.tokens?.prsit_watch === tokens.prsit_watch &&
+      p.tokens?.prsit_home === tokens.prsit_home,
   );
 }
 
@@ -112,20 +116,28 @@ async function openLockedView(
 ) {
   const receipt = await optional<ViewReceipt>(path);
   const live = await panes();
+  const retired = (receipt?.retired ?? []).filter((id) => live.some((p) => p.pane_id === id));
+  const available = live.filter((p) => !retired.includes(p.pane_id));
   const tokens = identity(kind, w);
-  let pane = live.find((p) => Object.entries(tokens).every(([k, v]) => p.tokens?.[k] === v));
+  let pane = available.find((p) => Object.entries(tokens).every(([k, v]) => p.tokens?.[k] === v));
   // A successful create is saved before reporting metadata. Missing/expired
   // metadata must never turn a reporting failure into another pane creation.
-  pane ??= live.find((p) => p.pane_id === receipt?.pane && p.terminal_id === receipt?.terminal);
+  pane ??= available.find(
+    (p) => p.pane_id === receipt?.pane && p.terminal_id === receipt?.terminal,
+  );
   if (!pane) {
     if (receipt?.phase === "opening")
       throw new Error(
         "A Herdr view creation is pending or its result is unknown; refusing to open a duplicate. Inspect existing PR sitter tabs before resetting its local view receipt.",
       );
-    if (receipt) await rm(path, { force: true });
     await mkdir(join(home(), "herdr-views"), { recursive: true, mode: 0o700 });
     try {
-      await writeFile(path, JSON.stringify({ phase: "opening" }), { flag: "wx", mode: 0o600 });
+      if (receipt) await atomic(path, { phase: "opening", retired });
+      else
+        await writeFile(path, JSON.stringify({ phase: "opening", retired }), {
+          flag: "wx",
+          mode: 0o600,
+        });
     } catch (e: any) {
       if (e.code === "EEXIST")
         throw new Error("This Herdr view is already being opened; try again shortly.");
@@ -161,11 +173,11 @@ async function openLockedView(
           String(e),
         )
       )
-        await rm(path, { force: true });
+        await atomic(path, { phase: "released", retired });
       throw e;
     }
   }
-  await atomic(path, { phase: "open", pane: pane.pane_id, terminal: pane.terminal_id });
+  await atomic(path, { phase: "open", pane: pane.pane_id, terminal: pane.terminal_id, retired });
   const saved = w ? await watchSnapshot(w) : undefined;
   await namePluginTab(
     pane.tab_id,
@@ -202,7 +214,12 @@ export async function releasePluginView(kind: ViewKind, pane: string, w?: Watch)
   const path = receiptPath(kind, w);
   return withViewLock(path, async () => {
     const receipt = await optional<ViewReceipt>(path);
-    if (receipt?.pane === pane) await rm(path, { force: true });
+    // Persist retirement before touching Herdr. Stale identity tokens must not
+    // make this pane reusable if metadata cleanup fails or the watch resumes.
+    await atomic(path, {
+      ...(receipt?.pane === pane || !receipt ? { phase: "released" } : receipt),
+      retired: [...new Set([...(receipt?.retired ?? []), pane])],
+    });
     await herdrCommand([
       "pane",
       "report-metadata",

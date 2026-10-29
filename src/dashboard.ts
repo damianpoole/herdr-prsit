@@ -124,6 +124,7 @@ export async function dashboard(watch?: Watch) {
   // Opening the pane already publishes identity; updates can also partially
   // publish before failing. Release even if unwatch precedes the first update.
   let releasePending = !!reporter;
+  let retiring = false;
   const pluginDashboard =
     !watch && process.env.HERDR_PLUGIN_ENTRYPOINT_ID === "dashboard" && !!pane;
   let dashboardMarked = 0;
@@ -194,7 +195,9 @@ export async function dashboard(watch?: Watch) {
         if (reporter && Date.now() >= reportAfter) {
           try {
             const entry = state.entries[0];
-            if (entry.control?.mode === "removed") {
+            if (entry.control?.mode === "removed") retiring = true;
+            // Retirement is permanent; retry cleanup even after resume.
+            if (retiring) {
               if (releasePending) await reporter.release();
               releasePending = false;
             } else {

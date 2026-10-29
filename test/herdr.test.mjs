@@ -197,7 +197,7 @@ test("sidebar reports semantic state, visible stage and both seen/unseen complet
   assert.notEqual(await openView(w, "controller-workspace", false), pane);
 });
 
-for (const failRelease of [false, true]) {
+for (const failRelease of [false, "release-agent", "report-metadata"]) {
   test(`released reporter cannot reclaim a resumed watch (cleanup failure: ${failRelease})`, async (t) => {
     const { w, calls } = await fixture(t);
     const pane = await openView(w, "main", false);
@@ -205,7 +205,7 @@ for (const failRelease of [false, true]) {
     await original.update({ watch: w }, true, 1);
     await controlWatch(w, "unwatch");
     if (failRelease) {
-      process.env.FIXTURE_FAIL = "release-agent";
+      process.env.FIXTURE_FAIL = failRelease;
       await assert.rejects(original.release(), /fixture unavailable/);
       delete process.env.FIXTURE_FAIL;
     } else await original.release();
@@ -240,7 +240,7 @@ test("failed status reports retry rather than caching success", async (t) => {
   assert.equal((await calls()).filter((a) => a[1] === "report-agent").length, 1);
 });
 
-for (const failure of ["--display-agent", "get", "rename"]) {
+for (const failure of ["--display-agent", "get", "rename", "release-identity"]) {
   test(`unwatch releases a partially published sidebar after ${failure} fails`, async (t) => {
     const { w, calls } = await fixture(t);
     const pane = await openView(w, "main", false);
@@ -251,7 +251,8 @@ for (const failure of ["--display-agent", "get", "rename"]) {
     t.mock.method(SidebarReporter.prototype, "update", async function (...args) {
       try {
         await update.apply(this, args);
-        assert.fail("Expected partial publication to fail");
+        if (failure !== "release-identity") assert.fail("Expected partial publication to fail");
+        await controlWatch(w, "unwatch");
       } catch (e) {
         assert.match(String(e), /fixture unavailable/);
         // Remove the watch before the failed initial update can be retried.
@@ -284,6 +285,18 @@ for (const failure of ["--display-agent", "get", "rename"]) {
       releaseAttempts++;
       // A failed cleanup must remain pending for the next refresh.
       if (failure === "rename" && releaseAttempts === 1) throw new Error("release failed");
+      if (failure === "release-identity" && releaseAttempts === 1) {
+        process.env.FIXTURE_FAIL = "report-metadata";
+        try {
+          await assert.rejects(release.call(this), /fixture unavailable/);
+        } finally {
+          delete process.env.FIXTURE_FAIL;
+        }
+        await controlWatch(w, "resume");
+        const replacement = await openView(w, "main", false);
+        assert.notEqual(replacement, pane);
+        throw new Error("cleanup failed before resume");
+      }
       await release.call(this);
     });
     t.mock.method(process.stdout, "write", (text) => {
@@ -294,7 +307,7 @@ for (const failure of ["--display-agent", "get", "rename"]) {
       return true;
     });
     await dashboard(w);
-    assert.equal(releasesBeforeExit, failure === "rename" ? 2 : 1);
+    assert.equal(releasesBeforeExit, ["rename", "release-identity"].includes(failure) ? 2 : 1);
     assert.equal(SidebarReporter.prototype.update.mock.callCount(), 1);
     const records = await calls();
     assert.ok(records.some((a) => a[1] === "report-agent"));
