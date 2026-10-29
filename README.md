@@ -2,7 +2,7 @@
 
 A terminal-first GitHub pull-request babysitter for **Herdr**, built on **Pi Durable**. It polls GitHub with ordinary code, repairs actionable feedback with an agent, publishes the fixes, and merges when the PR satisfies its merge gate.
 
-Runs locally on Linux and macOS. Each machine has its own watch list and repository mappings. Ghostty needs no special integration.
+Designed to run locally on Linux and macOS. Verification has been performed locally on Linux; macOS validation is pending testing on a MacBook. Each machine has its own watch list and repository mappings. Ghostty needs no special integration.
 
 ## Install
 
@@ -130,7 +130,7 @@ npm audit
 npm pack
 ```
 
-Tests exercise the actual Pi Durable SQLite scheduler and native coding tools using a deterministic model fixture, restart recovery, head races, deduplicated review replies, pagination, real Git worktrees and local pushes, and the Herdr command contract. CI runs on Linux and macOS. No credentials or live GitHub writes are needed for the normal suite.
+Tests exercise the actual Pi Durable SQLite scheduler and native coding tools using a deterministic model fixture, restart recovery, head races, deduplicated review replies, pagination, real Git worktrees and local pushes, and the Herdr command contract. Verification is local only; this repository has no GitHub Actions workflow. The suite has passed on Linux. Run the same commands on a MacBook to validate macOS. No credentials or live GitHub writes are needed for the normal suite.
 
 An optional real-provider smoke test repairs a temporary local repository and validates/pushes to a local bare remote. It makes model requests using your Pi authentication but does not write to GitHub:
 
