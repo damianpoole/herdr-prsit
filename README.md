@@ -45,6 +45,12 @@ prsit resume 123
 
 `prsit watch 123` resolves the repository from the current checkout (including subdirectories), using `gh`'s default repository for that checkout. `--repo /path/to/repo` supplies the checkout when running elsewhere. An ambient `GH_REPO` does not override this lookup. Full HTTPS PR URLs remain supported.
 
+For example, when running outside the repository:
+
+```sh
+prsit watch 123 --repo ~/git/my-project
+```
+
 `watch` validates the checkout against the PR's GitHub host and repository. Pass `--repo /path/to/repo` from elsewhere; full URLs can also reuse a remembered repository mapping. For commands acting on existing watches, ambiguous PR numbers require the displayed watch ID or full URL.
 
 Registration authorizes autonomous local commits, pushes, review replies, addressed-thread resolution, and merging. No work starts until the controller runs. The controller creates a Herdr workspace with a live activity view for each new watch without changing focus. `prsit open 123` opens another view. Agent execution lives in the controller, so closing a view does not stop the agent.
