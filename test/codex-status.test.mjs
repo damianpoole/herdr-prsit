@@ -68,10 +68,33 @@ test("only authenticated structured status and exact no-findings receipts are in
     { id: 5, user, body: "Please fix a bug" },
     { id: 6, user, body: "<!-- codex-review-state:v1 malformed -->" },
     { id: 7, user, body: receipt.replace("573d3b5498", "aaaaaaaaaa") },
+    { id: 8, user: { ...user, id: 123 }, body: receipt },
+    { id: 9, user, body: receipt.replace("573d3b5498", "invalid") },
+    { id: 10, user, body: receipt.replace("Didn't find any major issues.", "Found a bug.") },
   ];
-  assert.deepEqual([...codexStatus(w, head, cs).informational], [1, 3]);
+  assert.deepEqual([...codexStatus(w, head, cs).informational], [1, 3, 7]);
   assert.equal(isCodexAuthor({ ...user, login: "someone" }, "github.com"), false);
   assert.equal(isCodexAuthor(user, "enterprise.example"), false);
+});
+test("historical no-findings receipts stay informational on registration and head changes without approving", () => {
+  const receipt = {
+    id: 3,
+    user,
+    body: "<!-- codex-review-receipt:v1 -->\n\nCodex Review: Didn't find any major issues.\n\n**Reviewed commit:** `573d3b5498`",
+  };
+  // Each poll recomputes informational IDs, without relying on processed feedback.
+  // Start on a different head (registration), revisit the reviewed head, then advance.
+  for (const currentHead of ["a".repeat(40), head, "b".repeat(40)]) {
+    const current = codexStatus(w, currentHead, [...comments, receipt]);
+    assert.ok(current.informational.has(receipt.id));
+    assert.ok(
+      codexReviewBlocker(
+        { ...snap, head: currentHead, codexSummary: current.summary },
+        { codexReviewRequest: { head: currentHead, phase: "pending" } },
+      ),
+    );
+    if (currentHead !== head) assert.ok(codexReviewBlocker({ ...snap, head: currentHead }, state));
+  }
 });
 test("malformed or incomplete review metadata cannot prove a clean review", () => {
   assert.equal(

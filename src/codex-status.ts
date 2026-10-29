@@ -53,14 +53,15 @@ export function codexStatus(w: Watch, head: string, comments: Comment[]) {
     .sort((a, b) => b.id - a.id)[0];
   const informational = new Set(summaries.map((c) => c.comment.id));
   for (const c of trusted) {
+    // Historical successes stay informational after head changes, too. Receipt
+    // suppression is not approval; the review gate checks current-head evidence.
     // Only suppress this specific no-findings receipt, not arbitrary bot prose.
     const reviewed = c.body.match(/\*\*Reviewed commit:\*\* `([a-f0-9]{10,40})`/)?.[1];
     if (
       c.body.startsWith(
         "<!-- codex-review-receipt:v1 -->\n\nCodex Review: Didn't find any major issues.",
       ) &&
-      reviewed &&
-      head.startsWith(reviewed)
+      reviewed
     )
       informational.add(c.id);
   }
