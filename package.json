@@ -2,7 +2,11 @@
   "name": "herdr-prsit",
   "version": "0.1.0",
   "description": "A durable terminal-first GitHub PR babysitter for Herdr",
-  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/damianpoole/herdr-prsit.git"
+  },
   "bin": {
     "prsit": "dist/cli.js"
   },
@@ -12,14 +16,16 @@
     "LICENSE",
     "herdr-plugin.toml"
   ],
-  "engines": {
-    "node": ">=22.19.0"
-  },
+  "type": "module",
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test --test-concurrency=1 test/*.test.mjs",
     "check": "tsc --noEmit",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check"
   },
   "dependencies": {
     "@earendil-works/chord": "1.4.0",
@@ -29,14 +35,14 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "oxfmt": "^0.75.0",
+    "oxlint": "^1.90.0",
     "typescript": "~5.9.3"
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/damianpoole/herdr-prsit.git"
   },
   "overrides": {
     "undici": "8.12.2"
+  },
+  "engines": {
+    "node": ">=22.19.0"
   }
 }
