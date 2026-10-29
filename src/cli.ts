@@ -7,8 +7,9 @@ import {homedir} from 'node:os';
 import {readFile, mkdir, writeFile, open} from 'node:fs/promises';
 import {setTimeout as delay} from 'node:timers/promises';
 import {home, watches, findWatch, optional, atomic, watchDir, exec, hash} from './io.js';
-import {parsePR, GitHub} from './github.js';
+import {GitHub} from './github.js';
 import {discover} from './git.js';
+import {resolvePR} from './pr.js';
 import {models, modelRef} from './agent.js';
 import {daemon, ping} from './daemon.js';
 import {openView} from './herdr.js';
@@ -18,7 +19,7 @@ import type {Control} from './runtime.js';
 const help=`herdr-prsit — durable PR babysitting in your terminal
 
   prsit run [--headless]                    Run the controller inside Herdr
-  prsit watch <PR URL> [options]            Register a PR for autonomous repair and merge
+  prsit watch <number | URL> [options]    Register a PR for autonomous repair and merge
   prsit status [--json]                     Show all watches
   prsit open <watch ID | PR number>         Open a live view in a new Herdr workspace
   prsit logs <watch ID | PR number> [-f]     Show the activity log
@@ -61,8 +62,8 @@ export async function main(args=process.argv.slice(2)) {
   if(v.help||!command){console.log(help);return;}
   if(command==='run'){await daemon(v.headless);return;}
   if(command==='watch') {
-    if(!p[1])throw new Error('Supply the full PR URL');
-    const pr=parsePR(p[1]);
+    if(!p[1])throw new Error('Supply a PR number or full PR URL');
+    const pr=await resolvePR(p[1],v.repo);
     const id=hash(pr.url.toLowerCase()).slice(0,12);
     const existing=(await watches()).find(w=>w.id===id);
     if(existing)throw new Error(`Already registered as ${id}; use resume or retry`);
