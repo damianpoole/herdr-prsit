@@ -1,0 +1,41 @@
+{
+  "name": "herdr-prsit",
+  "version": "0.1.0",
+  "description": "A durable terminal-first GitHub PR babysitter for Herdr",
+  "type": "module",
+  "bin": {
+    "prsit": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test --test-isolation=none --test-concurrency=1 test/*.test.mjs",
+    "check": "tsc --noEmit",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@earendil-works/pi-durable": "1.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "~5.9.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/damianpoole/herdr-prsit.git"
+  },
+  "overrides": {
+    "undici": "8.12.2"
+  }
+}
