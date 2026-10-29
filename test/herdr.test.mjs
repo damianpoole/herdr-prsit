@@ -197,6 +197,38 @@ test("sidebar reports semantic state, visible stage and both seen/unseen complet
   assert.notEqual(await openView(w, "controller-workspace", false), pane);
 });
 
+for (const failRelease of [false, true]) {
+  test(`released reporter cannot reclaim a resumed watch (cleanup failure: ${failRelease})`, async (t) => {
+    const { w, calls } = await fixture(t);
+    const pane = await openView(w, "main", false);
+    const original = new SidebarReporter(pane, w);
+    await original.update({ watch: w }, true, 1);
+    await controlWatch(w, "unwatch");
+    if (failRelease) {
+      process.env.FIXTURE_FAIL = "release-agent";
+      await assert.rejects(original.release(), /fixture unavailable/);
+      delete process.env.FIXTURE_FAIL;
+    } else await original.release();
+    const replacementPane = await openView(w, "main", false);
+    assert.notEqual(replacementPane, pane);
+    const replacement = new SidebarReporter(replacementPane, w);
+    await controlWatch(w, "resume");
+    await replacement.update({ watch: w }, true, 20_000);
+    const before = (await calls()).length;
+    await original.update({ watch: w }, true, 20_000);
+    await original.update({ watch: w }, false, 40_000);
+    assert.equal((await calls()).length, before);
+    // Cleanup retries (including dashboard exit) cannot remove the new receipt.
+    await original.release();
+    const live = JSON.parse(await readFile(process.env.FIXTURE_STATE, "utf8"));
+    assert.deepEqual(
+      live.panes.filter((p) => p.tokens.prsit_watch === w.id).map((p) => p.pane_id),
+      [replacementPane],
+    );
+    assert.equal(await openView(w, "main", false), replacementPane);
+  });
+}
+
 test("failed status reports retry rather than caching success", async (t) => {
   const { w, calls } = await fixture(t);
   const pane = await openView(w, "main", false);

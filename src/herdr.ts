@@ -228,6 +228,7 @@ function prLabel(w: Watch, stage: string) {
 }
 
 export class SidebarReporter {
+  private retired = false;
   private last = "";
   private refreshed = 0;
   private lastTab = "";
@@ -236,6 +237,7 @@ export class SidebarReporter {
     private w: Watch,
   ) {}
   async update(snapshot: WatchSnapshot, running: boolean, now = Date.now()) {
+    if (this.retired) return;
     const { stage, semantic } = presentation(snapshot, running);
     const value = JSON.stringify([stage, semantic]);
     if (value === this.last && now - this.refreshed < 10_000) return;
@@ -291,6 +293,9 @@ export class SidebarReporter {
     this.refreshed = now;
   }
   async release() {
+    // Release permanently retires this pane's reporter, even if cleanup needs
+    // retrying. A replacement pane may now own the resumed watch's identity.
+    this.retired = true;
     this.last = "";
     this.refreshed = 0;
     this.lastTab = "";

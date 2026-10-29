@@ -121,8 +121,9 @@ export async function dashboard(watch?: Watch) {
   let stopped = false;
   let action: { watch: Watch; key: string } | undefined;
   let reportAfter = 0;
-  // An update can publish identity or agent state before a later step fails.
-  let releasePending = false;
+  // Opening the pane already publishes identity; updates can also partially
+  // publish before failing. Release even if unwatch precedes the first update.
+  let releasePending = !!reporter;
   const pluginDashboard =
     !watch && process.env.HERDR_PLUGIN_ENTRYPOINT_ID === "dashboard" && !!pane;
   let dashboardMarked = 0;
