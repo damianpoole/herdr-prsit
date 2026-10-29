@@ -69,3 +69,19 @@ test('publication interrupted after push resumes without rerunning the agent',as
   gate=Promise.resolve();r=await openRuntime(w,createModels(),deps);
   try{await until(()=>resolved);assert.equal(agentCalls,1);assert.equal(pushEffects,1);}finally{await r.close();}
 });
+test('native model work resumes after shutdown without repeating a committed tool',async t=>{
+  const {dir,w}=await setup(t);const item={key:'comment:recover',fingerprint:'once',kind:'comment',body:'Repair once'};
+  const m=createModels(),faux=fauxProvider({provider:'faux',models:[{id:'fixture'}],tokensPerSecond:100000});m.setProvider(faux.provider);
+  let reportPath,secondStarted=false,resolved=false;
+  faux.setResponses([
+    context=>{reportPath=JSON.stringify(context.messages).match(/write a JSON report to ([^ ]+) with/)[1];return fauxAssistantMessage(fauxToolCall('write',{path:reportPath,content:JSON.stringify({outcome:'addressed',summary:'Committed tool',responses:[{key:item.key,body:'Handled',resolve:false}]})}),{stopReason:'toolUse'});},
+    (_context,options)=>new Promise(resolve=>{secondStarted=true;const finish=()=>resolve(fauxAssistantMessage('Interrupted',{stopReason:'aborted'}));if(options.signal?.aborted)finish();else options.signal?.addEventListener('abort',finish,{once:true});}),
+  ]);
+  const gh={snapshot:async()=>({...clean,checks:[{state:'PENDING',name:'ci'}],feedback:[item]}),ciLogs:async()=>'',respond:async()=>{resolved=true;}};
+  const deps={github:()=>gh,prepare:async()=>dir,validateChanges:async()=>clean.head,push:async()=>{}};
+  let runtime=await openRuntime(w,m,deps);
+  await until(()=>secondStarted);const report=await readFile(reportPath,'utf8');await runtime.close();
+  const restored=createModels(),next=fauxProvider({provider:'faux',models:[{id:'fixture'}],tokensPerSecond:100000});restored.setProvider(next.provider);next.setResponses([fauxAssistantMessage('Finished after restart')]);
+  runtime=await openRuntime(w,restored,deps);
+  try{await until(()=>resolved);assert.equal(next.state.callCount,1);assert.equal(await readFile(reportPath,'utf8'),report);}finally{await runtime.close();}
+});
