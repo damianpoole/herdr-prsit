@@ -36,11 +36,11 @@ export async function log(w: Watch, message: string) {
   console.log(`${w.id} ${message}`);
 }
 export async function exec(command: string, args: string[], opts: {
-  cwd?: string; input?: string; timeout?: number; allowed?: number[]; signal?: AbortSignal;
+  cwd?: string; env?: NodeJS.ProcessEnv; input?: string; timeout?: number; allowed?: number[]; signal?: AbortSignal;
   onData?: (chunk: string) => void;
 } = {}): Promise<{stdout: string; stderr: string; code: number}> {
   return new Promise((done, fail) => {
-    const env:NodeJS.ProcessEnv={...process.env,MISE_QUIET:'1'}; delete env.NODE_TEST_CONTEXT;
+    const env:NodeJS.ProcessEnv={...process.env,MISE_QUIET:'1',...opts.env}; delete env.NODE_TEST_CONTEXT;
     const child = spawn(command, args, {cwd: opts.cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true});
     let stdout = '', stderr = '', ended = false, killed: string | undefined;
     let killer: NodeJS.Timeout | undefined;

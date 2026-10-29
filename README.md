@@ -31,7 +31,7 @@ prsit run
 In another pane, from your repository:
 
 ```sh
-prsit watch https://github.com/owner/repo/pull/123 \
+prsit watch 123 \
   --model openai-codex/gpt-6.1-sol \
   --test 'npm test'
 
@@ -43,7 +43,15 @@ prsit resume 123
 
 `--model` can be omitted when `PRSIT_MODEL` or Pi's `defaultProvider` and `defaultModel` are configured. `prsit models` lists authenticated model choices; authentication stays in Pi's existing store. Model selection is recorded per PR.
 
-`watch` validates the checkout against the PR's GitHub host and repository. Pass `--repo /path/to/repo` from elsewhere; later PRs can reuse a remembered repository mapping. Ambiguous PR numbers require the displayed watch ID or full URL.
+`prsit watch 123` resolves the repository from the current checkout (including subdirectories), using `gh`'s default repository for that checkout. `--repo /path/to/repo` supplies the checkout when running elsewhere. An ambient `GH_REPO` does not override this lookup. Full HTTPS PR URLs remain supported.
+
+For example, when running outside the repository:
+
+```sh
+prsit watch 123 --repo ~/git/my-project
+```
+
+`watch` validates the checkout against the PR's GitHub host and repository. Pass `--repo /path/to/repo` from elsewhere; full URLs can also reuse a remembered repository mapping. For commands acting on existing watches, ambiguous PR numbers require the displayed watch ID or full URL.
 
 Registration authorizes autonomous local commits, pushes, review replies, addressed-thread resolution, and merging. No work starts until the controller runs. The controller creates a Herdr workspace with a live activity view for each new watch without changing focus. `prsit open 123` opens another view. Agent execution lives in the controller, so closing a view does not stop the agent.
 
@@ -60,19 +68,19 @@ OpenCode runs in its own saved session with `run --format json --auto`. Its outp
 |---|---|
 | `run` | Run continuously inside Herdr; Ctrl+C checkpoints pending work |
 | `run --headless` | Run without Herdr layout, useful for a service or test host |
-| `watch <url>` | Register a PR and its repository/harness configuration |
+| `watch <number or url>` | Register a PR and its repository/harness configuration |
 | `status [--json]` | Controller liveness and each watch's last published status |
 | `logs <watch> [-f]` | Activity and native agent text/tool events |
 | `open <watch>` | Create a new Herdr activity workspace |
 | `pause <watch>` | Close the durable runtime, preserving unfinished work |
 | `resume <watch>` | Reopen and resume the same checkpointed work |
-| `retry <watch>` | Restart blocked work with fresh GitHub state and a new worktree; reset retry counts |
+| `retry <watch>` | Resume blocked publication; otherwise start a fresh repair and reset retry counts |
 | `unwatch <watch>` | Stop watching and retain history/worktrees; `resume` reactivates it |
 | `doctor` / `models` | Check environment and available Pi models |
 
 Watch options: `--interval 15m`, `--timeout 30m`, `--max-attempts 3`, `--merge squash|merge|rebase`, `--test '<shell command>'`, `--allow-no-checks`.
 
-`retry` is for blocked work, not an already running job. A blocked watch notices a retry within about five seconds. Pause/resume controls are noticed within about one second, except while the controller is opening another runtime. A resumed sleeping watch keeps its original poll deadline. The repair timeout is a wall-clock deadline and includes time spent stopped.
+`retry` is for blocked work, not an already running job. A blocked publication resumes its saved validated commit and report without rerunning the agent; genuine head changes still block publication. After a push, the controller retries an unchanged old GitHub head up to ten times at one-second intervals before blocking. Other blocked phases start a fresh repair. A blocked watch notices a retry within about five seconds. Pause/resume controls are noticed within about one second, except while the controller is opening another runtime. A resumed sleeping watch keeps its original poll deadline. The repair timeout is a wall-clock deadline and includes time spent stopped.
 
 ## How it works
 

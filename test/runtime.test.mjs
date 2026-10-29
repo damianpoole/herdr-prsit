@@ -85,3 +85,31 @@ test('native model work resumes after shutdown without repeating a committed too
   runtime=await openRuntime(w,restored,deps);
   try{await until(()=>resolved);assert.equal(next.state.callCount,1);assert.equal(await readFile(reportPath,'utf8'),report);}finally{await runtime.close();}
 });
+
+test('stale post-push reads settle without blocking or rerunning the agent',async t=>{
+  const {dir,w}=await setup(t);const item={key:'comment:stale',fingerprint:'a',kind:'comment',body:'fix'};
+  let agentCalls=0,pushes=0,reads=0,responses=0,merged=false;
+  const gh={snapshot:async()=>({...clean,head:pushes && ++reads>2?'def':'abc',state:merged?'MERGED':'OPEN',feedback:responses?[]:[item]}),ciLogs:async()=>'',respond:async()=>{responses++;},merge:async()=>{merged=true;}};
+  const r=await openRuntime(w,createModels(),{github:()=>gh,prepare:async()=>dir,validateChanges:async()=> 'def',
+    native:async(_h,_w,j)=>{agentCalls++;await writeFile(join(dir,w.id,'jobs',j.id,'report.json'),JSON.stringify({outcome:'addressed',summary:'Done',responses:[{key:item.key,body:'Fixed',resolve:false}]}));},push:async()=>{pushes++;}});
+  try{await until(async()=>(await status(dir)).status==='merged');assert.equal(agentCalls,1);assert.equal(pushes,1);assert.equal(responses,1);}finally{await r.close();}
+});
+
+test('retry of blocked publication survives restart and never reruns the agent',async t=>{
+  const {dir,w}=await setup(t);const item={key:'comment:blocked',fingerprint:'a',kind:'comment',body:'fix'};
+  let agentCalls=0,remote='abc',responses=0,merged=false;
+  const gh={snapshot:async()=>({...clean,head:remote,state:merged?'MERGED':'OPEN',feedback:responses?[]:[item]}),ciLogs:async()=>'',respond:async()=>{responses++;},merge:async()=>{merged=true;}};
+  const deps={github:()=>gh,prepare:async()=>dir,validateChanges:async()=> 'def',
+    native:async(_h,_w,j)=>{agentCalls++;await writeFile(join(dir,w.id,'jobs',j.id,'report.json'),JSON.stringify({outcome:'addressed',summary:'Done',responses:[{key:item.key,body:'Fixed',resolve:false}]}));},
+    push:async()=>{if(remote!=='def'){remote='unexpected';}}};
+  let r=await openRuntime(w,createModels(),deps);
+  await until(async()=>(await status(dir)).status==='blocked');
+  const blocked=await status(dir);assert.equal(responses,0);assert.equal(merged,false);
+  await r.close();remote='def';
+  await writeFile(join(dir,w.id,'control.json'),JSON.stringify({mode:'running',retryAt:blocked.blockedAt+1}));
+  r=await openRuntime(w,createModels(),deps);
+  try{
+    for(let i=0;i<500 && (await status(dir)).status!=='merged';i++)await delay(20);
+    assert.equal((await status(dir)).status,'merged');assert.equal(agentCalls,1);assert.equal(responses,1);
+  }finally{await r.close();}
+});

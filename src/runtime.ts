@@ -13,6 +13,7 @@ import {atomic, optional, json, log, watchDir, exec, hash} from './io.js';
 import {GitHub} from './github.js';
 import {prepare, validateChanges, push} from './git.js';
 import {pending, mergeBlocker, validateReport} from './policy.js';
+import {confirmPublication} from './publication.js';
 import {modelRef, prompt, runNative, runOpenCode} from './agent.js';
 
 export const initialState = (): State => ({phase:'poll', processed:{}, attempts:{}, nextPoll:0, message:'Registered', status:'watching'});
@@ -49,8 +50,13 @@ export async function openRuntime(w:Watch, models:Models, overrides:Partial<Serv
       if(s.blockedAt) {
         const c=await optional<Control>(join(dir,'control.json'));
         if((c?.retryAt ?? 0) > s.blockedAt) {
-          await log(w,'Retry requested; retaining previous worktree and transcript');
-          await transition(r,{...s,phase:'poll',job:undefined,blockedAt:undefined,attempts:{},status:'watching',nextPoll:0});
+          if(s.phase==='publish' && s.job?.publishHead && s.job.result) {
+            await log(w,'Retry requested; resuming saved publication without rerunning the agent');
+            await transition(r,{...s,blockedAt:undefined,status:'publishing',message:'Resuming saved publication'});
+          } else {
+            await log(w,'Retry requested; retaining previous worktree and transcript');
+            await transition(r,{...s,phase:'poll',job:undefined,blockedAt:undefined,attempts:{},status:'watching',nextPoll:0});
+          }
         } else await sleep(r,s,Date.now()+5000);
         return;
       }
@@ -142,8 +148,7 @@ export async function openRuntime(w:Watch, models:Models, overrides:Partial<Serv
         const current=await github.snapshot();
         if(current.state!=='OPEN') throw new Error(`PR is now ${current.state}`);
         await services.push(w,j,j.publishHead!,current.head);
-        const fresh=await github.snapshot();
-        if(fresh.head!==j.publishHead) throw new Error('GitHub head does not match the validated commit after push');
+        const fresh=await confirmPublication(()=>github.snapshot(),j.snapshot.head,j.publishHead!,r.signal);
         for(const reply of j.result!.responses) {
           const item=j.items.find(i=>i.key===reply.key)!;
           const live=fresh.feedback.find(i=>i.key===item.key);
