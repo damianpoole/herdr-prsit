@@ -64,19 +64,19 @@ OpenCode runs in its own saved session with `run --format json --auto`. Its outp
 
 ## Commands
 
-| Command | Behaviour |
-|---|---|
-| `run` | Run continuously inside Herdr; Ctrl+C checkpoints pending work |
-| `run --headless` | Run without Herdr layout, useful for a service or test host |
-| `watch <number or url>` | Register a PR and its repository/harness configuration |
-| `status [--json]` | Controller liveness and each watch's last published status |
-| `logs <watch> [-f]` | Activity and native agent text/tool events |
-| `open <watch>` | Create a new Herdr activity workspace |
-| `pause <watch>` | Close the durable runtime, preserving unfinished work |
-| `resume <watch>` | Reopen and resume the same checkpointed work |
-| `retry <watch>` | Resume blocked publication; otherwise start a fresh repair and reset retry counts |
-| `unwatch <watch>` | Stop watching and retain history/worktrees; `resume` reactivates it |
-| `doctor` / `models` | Check environment and available Pi models |
+| Command                 | Behaviour                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| `run`                   | Run continuously inside Herdr; Ctrl+C checkpoints pending work                    |
+| `run --headless`        | Run without Herdr layout, useful for a service or test host                       |
+| `watch <number or url>` | Register a PR and its repository/harness configuration                            |
+| `status [--json]`       | Controller liveness and each watch's last published status                        |
+| `logs <watch> [-f]`     | Activity and native agent text/tool events                                        |
+| `open <watch>`          | Create a new Herdr activity workspace                                             |
+| `pause <watch>`         | Close the durable runtime, preserving unfinished work                             |
+| `resume <watch>`        | Reopen and resume the same checkpointed work                                      |
+| `retry <watch>`         | Resume blocked publication; otherwise start a fresh repair and reset retry counts |
+| `unwatch <watch>`       | Stop watching and retain history/worktrees; `resume` reactivates it               |
+| `doctor` / `models`     | Check environment and available Pi models                                         |
 
 Watch options: `--interval 15m`, `--timeout 30m`, `--max-attempts 3`, `--merge squash|merge|rebase`, `--test '<shell command>'`, `--allow-no-checks`.
 
@@ -132,11 +132,15 @@ The agent executes local shell commands as you do. Run it against repositories a
 ## Development and verification
 
 ```sh
+npm run lint
+npm run fmt:check
 npm test
 npm run check
 npm audit
 npm pack
 ```
+
+Oxlint and Oxfmt use their default rules and formatting settings. Run `npm run lint:fix` to apply automatic lint fixes and `npm run fmt` to format the repository. Both tools respect `.gitignore`, so dependencies and build output are excluded.
 
 Tests exercise the actual Pi Durable SQLite scheduler and native coding tools using a deterministic model fixture, restart recovery, head races, deduplicated review replies, pagination, real Git worktrees and local pushes, and the Herdr command contract. Verification is local only; this repository has no GitHub Actions workflow. The suite has passed on Linux. Run the same commands on a MacBook to validate macOS. No credentials or live GitHub writes are needed for the normal suite.
 
