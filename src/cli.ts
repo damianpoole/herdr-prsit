@@ -25,7 +25,7 @@ const help=`herdr-prsit — durable PR babysitting in your terminal
   prsit logs <watch ID | PR number> [-f]     Show the activity log
   prsit pause <watch>                       Checkpoint and pause work
   prsit resume <watch>                      Resume checkpointed work
-  prsit retry <watch>                       Retry blocked work using a fresh job
+  prsit retry <watch>                       Retry blocked work; resume saved publication
   prsit unwatch <watch>                     Stop watching; retain worktrees and history
   prsit doctor                             Check dependencies, GitHub and model access
   prsit models                             List configured, available Pi models

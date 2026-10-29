@@ -74,13 +74,13 @@ OpenCode runs in its own saved session with `run --format json --auto`. Its outp
 | `open <watch>` | Create a new Herdr activity workspace |
 | `pause <watch>` | Close the durable runtime, preserving unfinished work |
 | `resume <watch>` | Reopen and resume the same checkpointed work |
-| `retry <watch>` | Restart blocked work with fresh GitHub state and a new worktree; reset retry counts |
+| `retry <watch>` | Resume blocked publication; otherwise start a fresh repair and reset retry counts |
 | `unwatch <watch>` | Stop watching and retain history/worktrees; `resume` reactivates it |
 | `doctor` / `models` | Check environment and available Pi models |
 
 Watch options: `--interval 15m`, `--timeout 30m`, `--max-attempts 3`, `--merge squash|merge|rebase`, `--test '<shell command>'`, `--allow-no-checks`.
 
-`retry` is for blocked work, not an already running job. A blocked watch notices a retry within about five seconds. Pause/resume controls are noticed within about one second, except while the controller is opening another runtime. A resumed sleeping watch keeps its original poll deadline. The repair timeout is a wall-clock deadline and includes time spent stopped.
+`retry` is for blocked work, not an already running job. A blocked publication resumes its saved validated commit and report without rerunning the agent; genuine head changes still block publication. After a push, the controller retries an unchanged old GitHub head up to ten times at one-second intervals before blocking. Other blocked phases start a fresh repair. A blocked watch notices a retry within about five seconds. Pause/resume controls are noticed within about one second, except while the controller is opening another runtime. A resumed sleeping watch keeps its original poll deadline. The repair timeout is a wall-clock deadline and includes time spent stopped.
 
 ## How it works
 
