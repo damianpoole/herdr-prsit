@@ -121,7 +121,8 @@ export async function dashboard(watch?: Watch) {
   let stopped = false;
   let action: { watch: Watch; key: string } | undefined;
   let reportAfter = 0;
-  let reported = false;
+  // An update can publish identity or agent state before a later step fails.
+  let releasePending = false;
   const pluginDashboard =
     !watch && process.env.HERDR_PLUGIN_ENTRYPOINT_ID === "dashboard" && !!pane;
   let dashboardMarked = 0;
@@ -193,11 +194,11 @@ export async function dashboard(watch?: Watch) {
           try {
             const entry = state.entries[0];
             if (entry.control?.mode === "removed") {
-              if (reported) await reporter.release();
-              reported = false;
+              if (releasePending) await reporter.release();
+              releasePending = false;
             } else {
+              releasePending = true;
               await reporter.update(entry, state.running);
-              reported = true;
               if (state.message.startsWith("Sidebar unavailable:")) state.message = "";
             }
           } catch (e) {

@@ -16,6 +16,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { activityLabel, presentation } from "../dist/presentation.js";
 import { pluginAction } from "../dist/plugin.js";
 import { acquire, controllerInfo, socketPath, viewWorkspace } from "../dist/controller.js";
+import { dashboard } from "../dist/dashboard.js";
+import { controlWatch } from "../dist/presentation.js";
 
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), "prsit herdr "));
@@ -205,6 +207,72 @@ test("failed status reports retry rather than caching success", async (t) => {
   await reporter.update({ watch: w }, true, 2);
   assert.equal((await calls()).filter((a) => a[1] === "report-agent").length, 1);
 });
+
+for (const failure of ["--display-agent", "get", "rename"]) {
+  test(`unwatch releases a partially published sidebar after ${failure} fails`, async (t) => {
+    const { w, calls } = await fixture(t);
+    const pane = await openView(w, "main", false);
+    w.url = "https://github.com/owner/repo/pull/42";
+    process.env.HERDR_PANE_ID = pane;
+    process.env.FIXTURE_FAIL = failure;
+    const update = SidebarReporter.prototype.update;
+    t.mock.method(SidebarReporter.prototype, "update", async function (...args) {
+      try {
+        await update.apply(this, args);
+        assert.fail("Expected partial publication to fail");
+      } catch (e) {
+        assert.match(String(e), /fixture unavailable/);
+        // Remove the watch before the failed initial update can be retried.
+        await controlWatch(w, "unwatch");
+        delete process.env.FIXTURE_FAIL;
+        throw e;
+      }
+    });
+    for (const [object, key, value] of [
+      [process.stdin, "isTTY", true],
+      [process.stdout, "isTTY", true],
+      [process.stdin, "setRawMode", () => {}],
+    ]) {
+      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      Object.defineProperty(object, key, { configurable: true, value });
+      t.after(() => {
+        if (descriptor) Object.defineProperty(object, key, descriptor);
+        else delete object[key];
+      });
+    }
+    t.mock.method(process.stdin, "resume", () => process.stdin);
+    t.mock.method(process.stdin, "pause", () => process.stdin);
+    let now = Date.now();
+    t.mock.method(Date, "now", () => (now += 10_001));
+    let renders = 0;
+    let releasesBeforeExit;
+    const release = SidebarReporter.prototype.release;
+    let releaseAttempts = 0;
+    t.mock.method(SidebarReporter.prototype, "release", async function () {
+      releaseAttempts++;
+      // A failed cleanup must remain pending for the next refresh.
+      if (failure === "rename" && releaseAttempts === 1) throw new Error("release failed");
+      await release.call(this);
+    });
+    t.mock.method(process.stdout, "write", (text) => {
+      if (text.startsWith("\x1b[H\x1b[2J") && ++renders === 4) {
+        releasesBeforeExit = releaseAttempts;
+        process.emit("SIGTERM");
+      }
+      return true;
+    });
+    await dashboard(w);
+    assert.equal(releasesBeforeExit, failure === "rename" ? 2 : 1);
+    assert.equal(SidebarReporter.prototype.update.mock.callCount(), 1);
+    const records = await calls();
+    assert.ok(records.some((a) => a[1] === "report-agent"));
+    assert.ok(records.some((a) => a[1] === "release-agent"));
+    const live = JSON.parse(await readFile(process.env.FIXTURE_STATE, "utf8"));
+    assert.equal(live.panes[0].tokens.prsit_watch, undefined);
+    // Cleanup also removes the saved receipt rather than reusing the removed view.
+    assert.notEqual(await openView(w, "main", false), pane);
+  });
+}
 
 test("presentation reflects actual repair stages and never equates agent completion with merge", () => {
   const label = (status, message = "", extra = {}) => activityLabel({ status, message, ...extra });
