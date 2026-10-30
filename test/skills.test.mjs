@@ -83,6 +83,23 @@ test("symlink aliases and cycles terminate and do not duplicate skills", async (
   assert.deepEqual(result.warnings, []);
 });
 
+test("self-referential symlinks warn without suppressing later sibling skills", async (t) => {
+  const {
+    args: [worktree],
+    skill,
+    catalog,
+  } = await fixture(t);
+  const root = join(worktree, ".agents/skills");
+  const valid = await skill(root, "z-valid", "z-valid");
+  const loop = join(root, "a-loop");
+  await symlink("a-loop", loop);
+  const result = catalog();
+  assert.ok(result.prompt.includes(valid));
+  assert.equal(result.warnings.length, 1);
+  assert.ok(result.warnings[0].startsWith(`${loop}: `));
+  assert.match(result.warnings[0], /ELOOP/);
+});
+
 test("only SKILL.md entrypoints are loaded, including symlinked files", async (t) => {
   const {
     args: [worktree, , home, pi],

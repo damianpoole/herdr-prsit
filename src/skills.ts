@@ -40,8 +40,13 @@ export function skillCatalog(
       )) {
         if (entry.name === ".git" || entry.name === "node_modules") continue;
         const child = join(path, entry.name);
-        const type = entry.isSymbolicLink() ? statSync(child, { throwIfNoEntry: false }) : entry;
-        if (type?.isDirectory()) scan(child);
+        try {
+          const type = entry.isSymbolicLink() ? statSync(child, { throwIfNoEntry: false }) : entry;
+          if (type?.isDirectory()) scan(child);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+            warnings.push(`${child}: ${(error as Error).message}`);
+        }
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT")
