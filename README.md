@@ -71,16 +71,20 @@ herdr plugin action invoke herdr-prsit.dashboard
 
 `start` opens a controller pane in a tab named **PR sitter** in the invoking workspace. `prsit stop` gracefully stops that controller from any terminal using the same state directory; it works even when you cannot locate the pane. You can instead run `prsit run` in an existing pane. The dashboard action opens or focuses one **PR SITTER DASHBOARD** board in a tab named **PR dashboard** in the controller's workspace. Repeating the action reuses that board. Per-PR tabs are named **PR #123 owner/repo — handling comments** (using the current stage), and their panes are headed **PR ACTIVITY** and show only that PR. `prsit dashboard` runs the same board in your current terminal, including outside Herdr for inspecting state and changing local watch controls. `open` requires Herdr. Plugin actions and `prsit open` must run in the controller's Herdr session; a different session is rejected rather than interpreting its workspace IDs locally.
 
-The dashboard lists watches and their stages, shows the selected PR's status message, repair worktree, and recent activity, and refreshes automatically. Its controls are:
+The dashboard lists watches and their stages, shows the selected PR's status message, repair worktree, and recent activity, and refreshes automatically. It uses Ink for incremental terminal rendering, with highlighted selection, coloured stages, and a controller-health header. Wide panes show the watch list beside the selected PR; narrower panes stack them, and very small panes show a compact summary. The per-PR activity view uses the same interface. Stage text remains readable with `NO_COLOR=1`. Its controls are:
 
-| Key                    | Action                                                 |
-| ---------------------- | ------------------------------------------------------ |
-| `↑` / `↓` or `j` / `k` | Select a PR                                            |
-| `p`                    | Pause the selected watch                               |
-| `r`                    | Resume its checkpointed work                           |
-| `t`                    | Request retry using the existing blocked-work protocol |
-| `o`                    | Focus or reopen its activity pane                      |
-| `q` / `Ctrl+C`         | Close this view; leave the controller running          |
+| Key                     | Action                                                 |
+| ----------------------- | ------------------------------------------------------ |
+| `↑` / `↓` or `j` / `k`  | Select a PR                                            |
+| `p`                     | Pause the selected watch                               |
+| `r`                     | Resume its checkpointed work                           |
+| `t`                     | Request retry using the existing blocked-work protocol |
+| `o`                     | Focus or reopen its activity pane                      |
+| `Page Up` / `Page Down` | Scroll recent activity in five-line steps              |
+| `End`                   | Return to following live activity                      |
+| `q` / `Ctrl+C`          | Close this view; leave the controller running          |
+
+Activity scrolling is bounded to the latest 32 KiB / 1,000 lines of the selected watch’s log. Selecting a different PR resets to live activity. For complete history, use `prsit logs`.
 
 Use `prsit watch` to register new PRs and `prsit unwatch` to remove them. There is no merge button or second repair engine in the dashboard. All controls use the same local state as the CLI. A dashboard opened while the controller is stopped can queue pause/resume/retry controls, but work only progresses when the controller runs.
 
@@ -92,6 +96,40 @@ prsit watch https://github.com/owner/repo/pull/456 \
 ```
 
 OpenCode runs in its own saved session with `run --format json --auto`. Its output appears in the activity view. Unlike native Pi Durable, an interrupted OpenCode process is **not** resumed automatically: inspect its session/worktree, then use `prsit retry 456` to start a fresh repair. Explicit OpenCode permission denials remain in effect.
+
+### Dashboard screenshots
+
+The screenshots below show the actual UI with fictional local watch data. Colours follow your terminal theme. See [local previews and screenshot regeneration](docs/screenshots/README.md) to try these examples.
+
+**Wide dashboard:** browse watched PRs alongside the selected PR’s status, worktree, and recent activity.
+
+![Wide PR dashboard with a highlighted watch and its repair activity](docs/screenshots/dashboard-wide.png)
+
+<details>
+<summary>Narrow dashboard and per-PR activity</summary>
+
+**Narrow dashboard:** the watch list stacks above the details, with the blocked reason and recent validation output visible.
+
+![Narrow dashboard showing a blocked PR and failed validation](docs/screenshots/dashboard-narrow.png)
+
+**Per-PR activity:** focus on one PR’s repair progress in its activity pane.
+
+![Single-PR activity view showing repair progress and the worktree path](docs/screenshots/dashboard-activity.png)
+
+</details>
+
+<details>
+<summary>Stopped controller and empty watch list</summary>
+
+**Controller stopped:** the header makes it clear that work is stopped and local controls will queue until the controller starts.
+
+![Dashboard with a stopped controller and queued-controls notice](docs/screenshots/dashboard-stopped.png)
+
+**Empty watch list:** the dashboard shows how to register your first PR.
+
+![Empty dashboard with the command to register a pull request](docs/screenshots/dashboard-empty.png)
+
+</details>
 
 ## Commands
 
