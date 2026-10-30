@@ -83,7 +83,7 @@ test("symlink aliases and cycles terminate and do not duplicate skills", async (
   assert.deepEqual(result.warnings, []);
 });
 
-test("root-level Markdown files and symlinks are loaded, but nested Markdown is not", async (t) => {
+test("only SKILL.md entrypoints are loaded, including symlinked files", async (t) => {
   const {
     args: [worktree, , home, pi],
     skill,
@@ -92,9 +92,10 @@ test("root-level Markdown files and symlinks are loaded, but nested Markdown is 
   const root = join(pi, "skills");
   await mkdir(root, { recursive: true });
   const shared = await skill(home, "shared", "shared");
-  const alias = join(root, "shared.md");
+  const alias = join(root, "shared", "SKILL.md");
+  await mkdir(dirname(alias), { recursive: true });
   await symlink(shared, alias);
-  await symlink(shared, join(root, "z-shared-alias.md"));
+  await symlink(shared, join(root, "shared.md"));
   await symlink(shared, join(root, "not-markdown.txt"));
   await writeFile(join(root, "plain.md"), "---\nname: plain\ndescription: Plain skill\n---\n");
   const nested = await skill(home, "nested", "nested");
@@ -104,8 +105,9 @@ test("root-level Markdown files and symlinks are loaded, but nested Markdown is 
   const result = catalog();
   assert.equal((result.prompt.match(/<name>shared<\/name>/g) || []).length, 1);
   assert.ok(result.prompt.includes(alias));
-  assert.ok(result.prompt.includes("<name>plain</name>"));
+  assert.ok(!result.prompt.includes(join(root, "shared.md")));
   assert.ok(!result.prompt.includes("<name>nested</name>"));
+  assert.ok(!result.prompt.includes("<name>plain</name>"));
   assert.deepEqual(result.warnings, []);
 });
 

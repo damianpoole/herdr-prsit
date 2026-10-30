@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { formatSkillsForPrompt, getAgentDir, loadSkills } from "@earendil-works/pi-coding-agent";
@@ -24,14 +24,14 @@ export function skillCatalog(
   const files: string[] = [];
   const seen = new Set<string>();
   const warnings: string[] = [];
-  function scan(path: string, root = false) {
+  function scan(path: string) {
     try {
       const canonical = realpathSync(path);
       if (seen.has(canonical)) return;
       seen.add(canonical);
       if (!statSync(path).isDirectory()) return;
       const skill = join(path, "SKILL.md");
-      if (existsSync(skill)) {
+      if (statSync(skill, { throwIfNoEntry: false })?.isFile()) {
         files.push(skill);
         return;
       }
@@ -42,14 +42,13 @@ export function skillCatalog(
         const child = join(path, entry.name);
         const type = entry.isSymbolicLink() ? statSync(child, { throwIfNoEntry: false }) : entry;
         if (type?.isDirectory()) scan(child);
-        else if (root && type?.isFile() && entry.name.endsWith(".md")) files.push(child);
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT")
         warnings.push(`${path}: ${(error as Error).message}`);
     }
   }
-  for (const root of roots) scan(resolve(root), true);
+  for (const root of roots) scan(resolve(root));
   const result = loadSkills({ cwd: worktree, agentDir, skillPaths: files, includeDefaults: false });
   warnings.push(...result.diagnostics.map((d) => `${d.path}: ${d.message}`));
   return { prompt: formatSkillsForPrompt(result.skills), warnings };
