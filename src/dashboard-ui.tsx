@@ -80,6 +80,13 @@ export function activityOffset(
   return logRows ? Math.max(0, Math.min(offset, state.logs.length - logRows)) : 0;
 }
 
+// Keep the per-PR activity view available after unwatching; only the board filters history.
+export function dashboardEntries(state: DashboardState) {
+  return state.watchOnly || state.showUnwatched
+    ? state.entries
+    : state.entries.filter((entry) => entry.control?.mode !== "removed");
+}
+
 export function Dashboard({
   state,
   columns = 100,
@@ -101,11 +108,16 @@ export function Dashboard({
     detailHeight,
     logRows,
   } = dashboardLayout(state.watchOnly, columns, rows);
+  const entries = dashboardEntries(state);
+  const hiddenCount = state.entries.length - entries.length;
+  const historyHint = state.watchOnly
+    ? ""
+    : `h ${state.showUnwatched ? "hide" : "show"} unwatched${hiddenCount ? ` (${hiddenCount})` : ""}`;
   const selectedIndex = Math.max(
     0,
-    state.entries.findIndex((entry) => entry.watch.id === state.selected),
+    entries.findIndex((entry) => entry.watch.id === state.selected),
   );
-  const selected = state.entries[selectedIndex];
+  const selected = entries[selectedIndex];
   const title = state.watchOnly ? "PR ACTIVITY" : "PR SITTER DASHBOARD";
   if (compact) {
     const lines = [
@@ -113,12 +125,15 @@ export function Dashboard({
       `Controller ${state.running ? "running" : "STOPPED"}`,
       selected
         ? `#${selected.watch.number} ${selected.watch.owner}/${selected.watch.repo}`
-        : "No PRs registered",
+        : hiddenCount
+          ? "No watched PRs"
+          : "No PRs registered",
       selected ? presentation(selected, state.running).stage : "prsit watch <PR URL> --repo <path>",
       selected?.state?.message ?? "",
       "Enlarge pane for details and activity.",
       "j/k select  p pause  r resume  t retry",
       "o open  q quit",
+      `u unwatch  ${historyHint}`,
       state.message,
     ];
     return (
@@ -134,7 +149,7 @@ export function Dashboard({
   const visibleCount = Math.max(1, Math.floor((listHeight - 3) / 2));
   const start = Math.max(
     0,
-    Math.min(selectedIndex - Math.floor(visibleCount / 2), state.entries.length - visibleCount),
+    Math.min(selectedIndex - Math.floor(visibleCount / 2), entries.length - visibleCount),
   );
   const stage = selected ? presentation(selected, state.running) : undefined;
   const stageColor =
@@ -143,8 +158,8 @@ export function Dashboard({
       : stage?.stage === "paused" || stage?.stage === "unwatched"
         ? "gray"
         : colors[stage?.semantic ?? "idle"];
-  const stages = state.entries.map((entry) => presentation(entry, state.running));
-  const counts = `${state.entries.length} watches   ${stages.filter((s) => s.semantic === "working").length} working   ${stages.filter((s) => s.stage === "blocked").length} blocked   ${stages.filter((s) => s.stage === "merged").length} merged   ${stages.filter((s) => s.stage === "paused").length} paused`;
+  const stages = entries.map((entry) => presentation(entry, state.running));
+  const counts = `${entries.length} watches   ${stages.filter((s) => s.semantic === "working").length} working   ${stages.filter((s) => s.stage === "blocked").length} blocked   ${stages.filter((s) => s.stage === "merged").length} merged   ${stages.filter((s) => s.stage === "paused").length} paused`;
   const innerWidth = Math.max(1, detailWidth - 4);
   const offset = activityOffset(state, columns, rows);
   const logEnd = state.logs.length - offset;
@@ -188,9 +203,11 @@ export function Dashboard({
             <Line
               width={listWidth - 4}
               color={colors.muted}
-            >{`WATCHES  ${state.entries.length ? selectedIndex + 1 : 0}/${state.entries.length}  ↑↓ select`}</Line>
-            {!state.entries.length && <Text color="gray">No PRs registered</Text>}
-            {state.entries.slice(start, start + visibleCount).map((entry) => {
+            >{`WATCHES  ${entries.length ? selectedIndex + 1 : 0}/${entries.length}  ↑↓ select`}</Line>
+            {!entries.length && (
+              <Text color="gray">{hiddenCount ? "No watched PRs" : "No PRs registered"}</Text>
+            )}
+            {entries.slice(start, start + visibleCount).map((entry) => {
               const active = entry.watch.id === selected?.watch.id;
               const status = presentation(entry, state.running);
               const label = fit(
@@ -266,8 +283,11 @@ export function Dashboard({
           ) : (
             <>
               <Text bold color="cyan">
-                Your PR watch list is empty
+                {hiddenCount ? "All PRs are unwatched" : "Your PR watch list is empty"}
               </Text>
+              {hiddenCount > 0 && (
+                <Text>Press h to show unwatched history; r resumes a selected PR.</Text>
+              )}
               <Text>Register a pull request from its checkout:</Text>
               <Text color="yellow">prsit watch 123</Text>
               <Text dimColor>Or use: prsit watch &lt;PR URL&gt; --repo &lt;path&gt;</Text>
@@ -281,10 +301,12 @@ export function Dashboard({
       <Line width={width}>
         {width < 75
           ? "p pause  r resume  t retry  o open  q quit"
-          : "↑↓ j/k select   p pause   r resume   t retry   o open activity   q quit"}
+          : "j/k select  p pause  r resume  t retry  o open  u unwatch  q quit"}
       </Line>
       <Line width={width} color={colors.muted}>
-        {"j/k select · PgUp/PgDn scroll · End live"}
+        {width < 75
+          ? `u unwatch  ${historyHint}`
+          : `${historyHint}${historyHint ? " · " : ""}PgUp/PgDn scroll · End live`}
       </Line>
     </Box>
   );
