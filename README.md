@@ -21,6 +21,16 @@ prsit models
 
 Pi Durable and Pi's model library are pinned to `1.4.0`. This is a native Pi Durable harness, not a subprocess running the Pi coding-agent CLI. It reuses Pi's provider/auth configuration, but does not load Pi CLI extensions, MCP servers, themes, or prompt templates. Its tools are Pi Durable's read, write, edit, and bash tools. The agent is instructed to read repository `AGENTS.md` files.
 
+Native repair conversations also receive a catalog of skills installed on the machine running the watch. Discovery searches, in precedence order:
+
+1. The isolated repair worktree's `.pi/skills`, `.agents/skills`, `.codex/skills`, and `.claude/skills`.
+2. The same directories in the registered checkout, including local skills absent from the worktree.
+3. Pi's global skills (`$PI_CODING_AGENT_DIR/skills`, normally `~/.pi/agent/skills`), `~/.agents/skills`, `$CODEX_HOME/skills` (normally `~/.codex/skills`), and `~/.claude/skills`.
+
+The first skill with a given name wins. Discovery follows symlinks, deduplicates their targets, and scans nested and hidden directories (including Codex's `.system`), stopping at each skill directory's `SKILL.md` entrypoint, following the [Agent Skills layout](https://agentskills.io/specification). Other Markdown files (including loose files at a discovery root) are not skill entrypoints; supporting files are read only on demand. Skills use Pi's frontmatter validation; missing descriptions are skipped, `disable-model-invocation: true` skills are omitted from the catalog, and diagnostics appear in the watch event log. The agent receives names, descriptions, and absolute file paths, then reads relevant skills and their supporting files on demand. Skill instructions do not grant publication permissions.
+
+The catalog is saved with each new native conversation and retained across checkpoint/resume; new repairs discover current skills. Skill file contents remain live on disk. No skills are copied or installed. This discovery covers the directories above, not arbitrary locations, CLI package/plugin registries, or extra paths in CLI settings. OpenCode retains its own skill-loading behavior.
+
 ## Daily workflow
 
 In a Herdr pane:

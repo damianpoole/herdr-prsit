@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -28,7 +28,17 @@ const clean = {
 };
 async function setup(t) {
   const dir = await mkdtemp(join(tmpdir(), "prsit-test-"));
+  const oldEnv = { ...process.env };
+  process.env.HOME = join(dir, "home");
+  process.env.PI_CODING_AGENT_DIR = join(dir, "pi-agent");
+  process.env.CODEX_HOME = join(dir, "codex");
   process.env.PRSIT_HOME = dir;
+  t.after(() => {
+    for (const key of ["HOME", "PI_CODING_AGENT_DIR", "CODEX_HOME", "PRSIT_HOME"]) {
+      if (oldEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = oldEnv[key];
+    }
+  });
   t.after(() => rm(dir, { recursive: true, force: true }));
   const w = {
     id: "fixture",
@@ -128,6 +138,12 @@ test("new feedback immediately before merge prevents merge", async (t) => {
 });
 test("native Pi Durable actually executes a coding tool, publishes, resolves, and merges", async (t) => {
   const { dir, w } = await setup(t);
+  const globalSkill = join(process.env.PI_CODING_AGENT_DIR, "skills", "fixture", "SKILL.md");
+  await mkdir(join(process.env.PI_CODING_AGENT_DIR, "skills", "fixture"), { recursive: true });
+  await writeFile(
+    globalSkill,
+    "---\nname: fixture\ndescription: Fixture repair guidance\n---\nSKILL BODY READ BY NATIVE TOOL\n",
+  );
   const m = createModels();
   const faux = fauxProvider({
     provider: "faux",
@@ -150,7 +166,18 @@ test("native Pi Durable actually executes a coding tool, publishes, resolves, an
     responses = 0;
   faux.setResponses([
     (context) => {
+      assert.ok(
+        JSON.stringify(context.messages.filter((message) => message.role === "system")).includes(
+          globalSkill,
+        ),
+      );
+      return fauxAssistantMessage(fauxToolCall("read", { path: globalSkill }), {
+        stopReason: "toolUse",
+      });
+    },
+    (context) => {
       const text = JSON.stringify(context.messages);
+      assert.ok(text.includes("SKILL BODY READ BY NATIVE TOOL"));
       const match = text.match(/write a JSON report to ([^ ]+) with/);
       assert.ok(match);
       return fauxAssistantMessage(
@@ -195,7 +222,7 @@ test("native Pi Durable actually executes a coding tool, publishes, resolves, an
     await until(async () => (await status(dir)).status === "merged");
     assert.equal(pushes, 1);
     assert.equal(responses, 1);
-    assert.equal(faux.state.callCount, 2);
+    assert.equal(faux.state.callCount, 3);
   } finally {
     await r.close();
   }
@@ -260,6 +287,14 @@ test("publication interrupted after push resumes without rerunning the agent", a
 });
 test("native model work resumes after shutdown without repeating a committed tool", async (t) => {
   const { dir, w } = await setup(t);
+  const skillDir = join(dir, ".agents", "skills", "repair-fixture");
+  await mkdir(skillDir, { recursive: true });
+  const skillPath = join(skillDir, "SKILL.md");
+  await writeFile(
+    skillPath,
+    "---\nname: repair-fixture\ndescription: Original catalog description\n---\nRead this fixture.\n",
+  );
+  let savedInstructions;
   const item = {
     key: "comment:recover",
     fingerprint: "once",
@@ -274,6 +309,11 @@ test("native model work resumes after shutdown without repeating a committed too
     resolved = false;
   faux.setResponses([
     (context) => {
+      savedInstructions = JSON.stringify(
+        context.messages.filter((message) => message.role === "system"),
+      );
+      assert.ok(savedInstructions.includes("Original catalog description"));
+      assert.ok(savedInstructions.includes(skillPath));
       reportPath = JSON.stringify(context.messages).match(/write a JSON report to ([^ ]+) with/)[1];
       return fauxAssistantMessage(
         fauxToolCall("write", {
@@ -320,7 +360,19 @@ test("native model work resumes after shutdown without repeating a committed too
   const restored = createModels(),
     next = fauxProvider({ provider: "faux", models: [{ id: "fixture" }], tokensPerSecond: 100000 });
   restored.setProvider(next.provider);
-  next.setResponses([fauxAssistantMessage("Finished after restart")]);
+  await writeFile(
+    skillPath,
+    "---\nname: repair-fixture\ndescription: Changed catalog description\n---\nChanged body.\n",
+  );
+  next.setResponses([
+    (context) => {
+      assert.equal(
+        JSON.stringify(context.messages.filter((message) => message.role === "system")),
+        savedInstructions,
+      );
+      return fauxAssistantMessage("Finished after restart");
+    },
+  ]);
   runtime = await openRuntime(w, restored, deps);
   try {
     await until(() => resolved);
