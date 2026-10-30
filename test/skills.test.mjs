@@ -128,6 +128,27 @@ test("only SKILL.md entrypoints are loaded, including symlinked files", async (t
   assert.deepEqual(result.warnings, []);
 });
 
+test("a discovery root can itself be a skill directory; supporting files are not entrypoints", async (t) => {
+  const {
+    args: [worktree],
+    skill,
+    catalog,
+  } = await fixture(t);
+  const root = join(worktree, ".agents/skills");
+  const entrypoint = await skill(root, ".", "skills", "Root skill");
+  await writeFile(
+    join(root, "README.md"),
+    "---\nname: supporting-file\ndescription: Not a skill entrypoint\n---\n",
+  );
+  await skill(root, "references/nested", "nested", "Supporting directory");
+  const result = catalog();
+  assert.ok(result.prompt.includes(entrypoint));
+  assert.equal((result.prompt.match(/<skill>/g) || []).length, 1);
+  assert.ok(!result.prompt.includes("supporting-file"));
+  assert.ok(!result.prompt.includes("Supporting directory"));
+  assert.deepEqual(result.warnings, []);
+});
+
 test("missing roots, malformed metadata, opt-out, XML escaping and skill boundaries", async (t) => {
   const {
     args: [worktree],
