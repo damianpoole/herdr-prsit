@@ -17,6 +17,7 @@ import { activityLabel, presentation } from "../dist/presentation.js";
 import { pluginAction } from "../dist/plugin.js";
 import { acquire, controllerInfo, socketPath, viewWorkspace } from "../dist/controller.js";
 import { dashboard } from "../dist/dashboard.js";
+import { dashboardTerminal } from "../dist/dashboard-ui.js";
 import { controlWatch } from "../dist/presentation.js";
 
 async function fixture(t) {
@@ -299,13 +300,15 @@ for (const failure of ["--display-agent", "get", "rename", "release-identity"]) 
       }
       await release.call(this);
     });
-    t.mock.method(process.stdout, "write", (text) => {
-      if (text.startsWith("\x1b[H\x1b[2J") && ++renders === 4) {
-        releasesBeforeExit = releaseAttempts;
-        process.emit("SIGTERM");
-      }
-      return true;
-    });
+    t.mock.method(dashboardTerminal, "mount", () => ({
+      update() {
+        if (++renders === 4) {
+          releasesBeforeExit = releaseAttempts;
+          process.emit("SIGTERM");
+        }
+      },
+      async close() {},
+    }));
     await dashboard(w);
     assert.equal(releasesBeforeExit, ["rename", "release-identity"].includes(failure) ? 2 : 1);
     assert.equal(SidebarReporter.prototype.update.mock.callCount(), 1);
