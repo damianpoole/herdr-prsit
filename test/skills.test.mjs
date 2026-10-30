@@ -83,6 +83,32 @@ test("symlink aliases and cycles terminate and do not duplicate skills", async (
   assert.deepEqual(result.warnings, []);
 });
 
+test("root-level Markdown files and symlinks are loaded, but nested Markdown is not", async (t) => {
+  const {
+    args: [worktree, , home, pi],
+    skill,
+    catalog,
+  } = await fixture(t);
+  const root = join(pi, "skills");
+  await mkdir(root, { recursive: true });
+  const shared = await skill(home, "shared", "shared");
+  const alias = join(root, "shared.md");
+  await symlink(shared, alias);
+  await symlink(shared, join(root, "z-shared-alias.md"));
+  await symlink(shared, join(root, "not-markdown.txt"));
+  await writeFile(join(root, "plain.md"), "---\nname: plain\ndescription: Plain skill\n---\n");
+  const nested = await skill(home, "nested", "nested");
+  const nestedRoot = join(worktree, ".pi/skills/subdir");
+  await mkdir(nestedRoot, { recursive: true });
+  await symlink(nested, join(nestedRoot, "nested.md"));
+  const result = catalog();
+  assert.equal((result.prompt.match(/<name>shared<\/name>/g) || []).length, 1);
+  assert.ok(result.prompt.includes(alias));
+  assert.ok(result.prompt.includes("<name>plain</name>"));
+  assert.ok(!result.prompt.includes("<name>nested</name>"));
+  assert.deepEqual(result.warnings, []);
+});
+
 test("missing roots, malformed metadata, opt-out, XML escaping and skill boundaries", async (t) => {
   const {
     args: [worktree],
