@@ -130,6 +130,51 @@ test("Ink layouts keep controls and Unicode inside wide, narrow and tiny viewpor
   );
 });
 
+test("short panes use compact mode until the detail panel can show activity", async () => {
+  const { activityOffset } = await import("../dist/dashboard-ui.js");
+  const state = {
+    entries: [
+      {
+        watch: {
+          id: "one",
+          number: 1,
+          owner: "fixture",
+          repo: "local",
+          url: "https://github.com/fixture/local/pull/1",
+        },
+        state: { status: "blocked", message: "Validation failed" },
+      },
+    ],
+    selected: "one",
+    running: true,
+    logs: ["activity must be visible"],
+    message: "",
+    logOffset: 10,
+  };
+  // Check both sides of the minimum usable height for each layout.
+  for (const [columns, watchOnly, firstFullHeight] of [
+    [80, false, 23],
+    [120, false, 18],
+    [80, true, 18],
+  ]) {
+    for (let rows = 15; rows <= firstFullHeight + 2; rows++) {
+      const snapshot = { ...state, watchOnly };
+      const output = renderDashboard(snapshot, columns, rows);
+      assert.match(output, /q quit/);
+      assert.ok(output.split("\r\n").length <= rows);
+      if (rows < firstFullHeight) {
+        assert.match(output, /Enlarge pane/);
+        assert.doesNotMatch(output, /ACTIVITY  live/);
+        assert.equal(activityOffset(snapshot, columns, rows), 0);
+      } else {
+        assert.doesNotMatch(output, /Enlarge pane/);
+        assert.match(output, /ACTIVITY  live/);
+        assert.match(output, /activity must be visible/);
+      }
+    }
+  }
+});
+
 test("keyboard controls pin their target and selection resets activity scrolling", async (t) => {
   const { dashboard } = await import("../dist/dashboard.js");
   const { dashboardTerminal } = await import("../dist/dashboard-ui.js");

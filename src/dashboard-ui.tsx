@@ -43,7 +43,6 @@ function Line({
 function dashboardLayout(watchOnly = false, columns = 100, rows = 30) {
   const width = Math.max(1, columns - 1);
   const height = Math.max(1, rows - 1);
-  const compact = width < 44 || height < 15;
   const wide = width >= 100 && !watchOnly;
   const bodyHeight = height - 6;
   const listHeight = watchOnly
@@ -54,7 +53,9 @@ function dashboardLayout(watchOnly = false, columns = 100, rows = 30) {
   const listWidth = wide ? Math.min(52, Math.floor(width * 0.43)) : width;
   const detailWidth = wide ? width - listWidth - 1 : width;
   const detailHeight = wide || watchOnly ? bodyHeight : bodyHeight - listHeight;
-  const logRows = compact ? 0 : Math.max(1, detailHeight - 10);
+  // Reserve the fixed detail content and borders plus at least one activity row.
+  const compact = width < 44 || detailHeight < 11;
+  const logRows = compact ? 0 : detailHeight - 10;
   return {
     width,
     height,
