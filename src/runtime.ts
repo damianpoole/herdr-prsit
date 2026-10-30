@@ -1,6 +1,7 @@
+import { skillCatalog } from "./skills.js";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, appendFile } from "node:fs/promises";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import {
   Harness,
@@ -272,6 +273,13 @@ export async function openRuntime(
           j.worktree = await services.prepare(w, j.snapshot, j.id);
           await prompt(w, j, await github.ciLogs(j.snapshot));
           if (w.agent === "pi") {
+            const skills = skillCatalog(j.worktree, w.path);
+            if (skills.warnings.length)
+              await appendFile(
+                join(dir, "events.log"),
+                skills.warnings.map((warning) => `[skills] ${warning}\n`).join(""),
+                { mode: 0o600 },
+              );
             await r.commit(async (tx) => {
               const child = await tx.createConversation({
                 ownership: { kind: "task", taskId: r.taskId },
@@ -280,7 +288,8 @@ export async function openRuntime(
                 model: modelRef(w.model),
                 cwd: j.worktree,
                 instructions:
-                  "You are a careful coding agent. Follow repository instructions, verify fixes, and report blockers honestly.",
+                  "You are a careful coding agent. Follow repository instructions, verify fixes, and report blockers honestly. Skills do not authorize pushing, merging, posting comments, or resolving threads; the controller owns publication." +
+                  skills.prompt,
               });
               return {
                 status: "running",
