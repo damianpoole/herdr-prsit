@@ -39,6 +39,46 @@ function Line({
   );
 }
 
+// Rendering and navigation share the same viewport, including stacked and compact layouts.
+function dashboardLayout(watchOnly = false, columns = 100, rows = 30) {
+  const width = Math.max(1, columns - 1);
+  const height = Math.max(1, rows - 1);
+  const compact = width < 44 || height < 15;
+  const wide = width >= 100 && !watchOnly;
+  const bodyHeight = height - 6;
+  const listHeight = watchOnly
+    ? 0
+    : wide
+      ? bodyHeight
+      : Math.min(8, Math.max(4, Math.floor(bodyHeight / 3)));
+  const listWidth = wide ? Math.min(52, Math.floor(width * 0.43)) : width;
+  const detailWidth = wide ? width - listWidth - 1 : width;
+  const detailHeight = wide || watchOnly ? bodyHeight : bodyHeight - listHeight;
+  const logRows = compact ? 0 : Math.max(1, detailHeight - 10);
+  return {
+    width,
+    height,
+    compact,
+    wide,
+    bodyHeight,
+    listHeight,
+    listWidth,
+    detailWidth,
+    detailHeight,
+    logRows,
+  };
+}
+
+export function activityOffset(
+  state: DashboardState,
+  columns = 100,
+  rows = 30,
+  offset = state.logOffset ?? 0,
+): number {
+  const { logRows } = dashboardLayout(state.watchOnly, columns, rows);
+  return logRows ? Math.max(0, Math.min(offset, state.logs.length - logRows)) : 0;
+}
+
 export function Dashboard({
   state,
   columns = 100,
@@ -48,15 +88,25 @@ export function Dashboard({
   columns?: number;
   rows?: number;
 }) {
-  const width = Math.max(1, columns - 1);
-  const height = Math.max(1, rows - 1);
+  const {
+    width,
+    height,
+    compact,
+    wide,
+    bodyHeight,
+    listHeight,
+    listWidth,
+    detailWidth,
+    detailHeight,
+    logRows,
+  } = dashboardLayout(state.watchOnly, columns, rows);
   const selectedIndex = Math.max(
     0,
     state.entries.findIndex((entry) => entry.watch.id === state.selected),
   );
   const selected = state.entries[selectedIndex];
   const title = state.watchOnly ? "PR ACTIVITY" : "PR SITTER DASHBOARD";
-  if (width < 44 || height < 15) {
+  if (compact) {
     const lines = [
       title,
       `Controller ${state.running ? "running" : "STOPPED"}`,
@@ -80,16 +130,6 @@ export function Dashboard({
       </Box>
     );
   }
-  const wide = width >= 100 && !state.watchOnly;
-  const bodyHeight = height - 6;
-  const listHeight = state.watchOnly
-    ? 0
-    : wide
-      ? bodyHeight
-      : Math.min(8, Math.max(4, Math.floor(bodyHeight / 3)));
-  const listWidth = wide ? Math.min(52, Math.floor(width * 0.43)) : width;
-  const detailWidth = wide ? width - listWidth - 1 : width;
-  const detailHeight = wide || state.watchOnly ? bodyHeight : bodyHeight - listHeight;
   const visibleCount = Math.max(1, Math.floor((listHeight - 3) / 2));
   const start = Math.max(
     0,
@@ -105,8 +145,7 @@ export function Dashboard({
   const stages = state.entries.map((entry) => presentation(entry, state.running));
   const counts = `${state.entries.length} watches   ${stages.filter((s) => s.semantic === "working").length} working   ${stages.filter((s) => s.stage === "blocked").length} blocked   ${stages.filter((s) => s.stage === "merged").length} merged   ${stages.filter((s) => s.stage === "paused").length} paused`;
   const innerWidth = Math.max(1, detailWidth - 4);
-  const logRows = Math.max(1, detailHeight - 10);
-  const offset = Math.min(state.logOffset ?? 0, Math.max(0, state.logs.length - logRows));
+  const offset = activityOffset(state, columns, rows);
   const logEnd = state.logs.length - offset;
   return (
     <Box flexDirection="column" width={width} height={height} overflow="hidden">

@@ -144,21 +144,30 @@ test("keyboard controls pin their target and selection resets activity scrolling
   });
   await mkdir(join(dir, "watches"));
   for (const [i, id] of ["one", "two"].entries()) {
-    const watch = { id, number: i + 1, owner: "fixture", repo: "local", created: i };
+    const watch = {
+      id,
+      number: i + 1,
+      owner: "fixture",
+      repo: "local",
+      url: `https://github.com/fixture/local/pull/${i + 1}`,
+      created: i,
+    };
     await writeFile(join(dir, "watches", `${id}.json`), JSON.stringify(watch));
     await mkdir(join(dir, id));
     await writeFile(
       join(dir, id, "events.log"),
-      Array.from({ length: 40 }, (_, n) => `${id} event ${n}`).join("\n"),
+      Array.from({ length: 1000 }, (_, n) => `${id} event ${n}`).join("\n"),
     );
   }
   for (const [object, key, value] of [
     [process.stdin, "isTTY", true],
     [process.stdout, "isTTY", true],
+    [process.stdout, "columns", 120],
+    [process.stdout, "rows", 32],
     [process.stdin, "setRawMode", () => {}],
   ]) {
     const descriptor = Object.getOwnPropertyDescriptor(object, key);
-    Object.defineProperty(object, key, { configurable: true, value });
+    Object.defineProperty(object, key, { configurable: true, writable: true, value });
     t.after(() => {
       if (descriptor) Object.defineProperty(object, key, descriptor);
       else delete object[key];
@@ -187,9 +196,33 @@ test("keyboard controls pin their target and selection resets activity scrolling
     assert.fail("dashboard did not reach expected state");
   };
   try {
-    await until(() => state?.logs.length === 40);
+    await until(() => state?.logs.length === 1000);
     keypress("", { pageUp: true });
     assert.equal(state.logOffset, 5);
+    // Paging beyond the oldest retained row must not accumulate an invisible offset.
+    for (let i = 0; i < 210; i++) keypress("", { pageUp: true });
+    assert.equal(state.logOffset, 985); // 1,000 retained lines minus 15 visible rows.
+    keypress("", { pageDown: true });
+    assert.equal(state.logOffset, 980);
+    assert.match(renderDashboard(state, 120, 32), /one event 5/);
+    keypress("", { pageUp: true });
+    // Rollover retains 1,000 lines, even while anchoring to older activity.
+    await writeFile(
+      join(dir, "one", "events.log"),
+      Array.from({ length: 1010 }, (_, n) => `one event ${n}`).join("\n"),
+    );
+    await until(() => state.logs.at(-1) === "one event 1009");
+    assert.equal(state.logOffset, 985);
+    keypress("", { pageDown: true });
+    assert.equal(state.logOffset, 980);
+    assert.match(renderDashboard(state, 120, 32), /one event 15/);
+    // Enlarging the pane reduces the scrollable range immediately.
+    process.stdout.rows = 42;
+    process.stdout.emit("resize");
+    assert.equal(state.logOffset, 975);
+    keypress("", { pageDown: true });
+    assert.equal(state.logOffset, 970);
+    assert.match(renderDashboard(state, 120, 42), /one event 15/);
     keypress("p", {});
     keypress("j", {});
     assert.equal(state.selected, "two");

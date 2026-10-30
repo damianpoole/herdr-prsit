@@ -1,4 +1,4 @@
-import { dashboardTerminal } from "./dashboard-ui.js";
+import { activityOffset, dashboardTerminal } from "./dashboard-ui.js";
 export { renderDashboard } from "./dashboard-ui.js";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
@@ -82,21 +82,17 @@ export async function dashboard(watch?: Watch) {
   const stop = () => {
     stopped = true;
   };
+  const clampScroll = (offset = state.logOffset ?? 0) => {
+    state.logOffset = activityOffset(state, process.stdout.columns, process.stdout.rows, offset);
+  };
   const keypress = (input: string, inkKey: import("ink").Key) => {
     const key = {
       name: inkKey.upArrow ? "up" : inkKey.downArrow ? "down" : input,
       ctrl: inkKey.ctrl,
     };
     if (inkKey.pageUp || inkKey.pageDown || inkKey.end) {
-      state.logOffset = inkKey.end
-        ? 0
-        : Math.max(
-            0,
-            Math.min(
-              Math.max(0, state.logs.length - 1),
-              (state.logOffset ?? 0) + (inkKey.pageUp ? 5 : -5),
-            ),
-          );
+      clampScroll();
+      clampScroll(inkKey.end ? 0 : state.logOffset! + (inkKey.pageUp ? 5 : -5));
       view?.update();
       return;
     }
@@ -129,7 +125,10 @@ export async function dashboard(watch?: Watch) {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   process.on("SIGHUP", stop);
-  const resize = () => view?.update();
+  const resize = () => {
+    clampScroll();
+    view?.update();
+  };
   process.stdout.on("resize", resize);
   try {
     view = dashboardTerminal.mount(state, keypress);
@@ -168,6 +167,7 @@ export async function dashboard(watch?: Watch) {
             if (previousEnd >= 0) state.logOffset += logs.length - previousEnd - 1;
           }
           state.logs = logs;
+          clampScroll();
         }
         if (pluginDashboard && Date.now() - dashboardMarked >= 10_000) {
           await markPluginView("dashboard", pane!);
