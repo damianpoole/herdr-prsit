@@ -130,6 +130,62 @@ test("Ink layouts keep controls and Unicode inside wide, narrow and tiny viewpor
   );
 });
 
+test("dashboard hides only unwatched history and keeps it inspectable on demand", () => {
+  const entries = [
+    {
+      watch: {
+        id: "active",
+        number: 1,
+        owner: "fixture",
+        repo: "active",
+        url: "https://example.com/1",
+      },
+      state: { status: "merged", message: "Merged" },
+    },
+    {
+      watch: {
+        id: "history",
+        number: 2,
+        owner: "fixture",
+        repo: "history",
+        url: "https://example.com/2",
+      },
+      state: { status: "merged", message: "Merged" },
+      control: { mode: "removed" },
+    },
+  ];
+  const state = { entries, selected: "active", running: false, logs: [], message: "" };
+  for (const [columns, rows] of [
+    [120, 32],
+    [72, 32],
+    [80, 16],
+  ]) {
+    const hidden = renderDashboard(state, columns, rows);
+    assert.match(hidden, /#1 fixture\/active/);
+    assert.doesNotMatch(hidden, /#2 fixture\/history/);
+    assert.match(hidden, /u unwatch/);
+    assert.match(hidden, /h show unwatched/);
+    const shown = renderDashboard(
+      { ...state, showUnwatched: true, selected: "history" },
+      columns,
+      rows,
+    );
+    assert.match(shown, /#2 fixture\/history/);
+    assert.match(shown, /h hide unwatched/);
+  }
+  const empty = renderDashboard({ ...state, entries: [entries[1]], selected: undefined }, 80, 24);
+  assert.match(empty, /All PRs are unwatched/);
+  assert.match(empty, /Press h/);
+  const activity = renderDashboard(
+    { ...state, entries: [entries[1]], selected: "history", watchOnly: true },
+    80,
+    24,
+  );
+  assert.match(activity, /#2 fixture\/history/);
+  assert.match(activity, /UNWATCHED/);
+  assert.doesNotMatch(activity, /h show unwatched/);
+});
+
 test("short panes use compact mode until the detail panel can show activity", async () => {
   const { activityOffset } = await import("../dist/dashboard-ui.js");
   const state = {
@@ -287,6 +343,39 @@ test("keyboard controls pin their target and selection resets activity scrolling
       const control = (await watchSnapshot({ id: "two" })).control;
       return control?.mode === "running" && !control.retryAt;
     });
+    // Unwatch stays pinned even if selection changes before the queued action runs.
+    keypress("u", {});
+    keypress("k", {});
+    await until(() => state.entries.find((e) => e.watch.id === "two")?.control?.mode === "removed");
+    assert.equal(state.selected, "one");
+    assert.notEqual((await watchSnapshot({ id: "one" })).control?.mode, "removed");
+    assert.doesNotMatch(renderDashboard(state, 120, 42), /#2 fixture\/local/);
+    keypress("h", {});
+    keypress("j", {});
+    assert.equal(state.selected, "two");
+    keypress("h", {});
+    assert.equal(state.selected, "one");
+    assert.deepEqual(state.logs, []);
+    assert.equal(state.logOffset, 0);
+    // Resume from history makes the watch visible with the default filter again.
+    keypress("h", {});
+    keypress("j", {});
+    keypress("r", {});
+    await until(() => state.entries.find((e) => e.watch.id === "two")?.control?.mode === "running");
+    keypress("h", {});
+    assert.equal(state.selected, "two");
+    keypress("u", {});
+    await until(() => state.selected === "one");
+    keypress("u", {});
+    await until(() => state.selected === undefined);
+    assert.deepEqual(state.logs, []);
+    assert.match(renderDashboard(state, 120, 42), /All PRs are unwatched/);
+    // With no visible selection, controls must not act on a hidden watch.
+    keypress("r", {});
+    await delay(350);
+    assert.ok(state.entries.every((e) => e.control?.mode === "removed"));
+    keypress("h", {});
+    assert.equal(state.selected, "one");
   } finally {
     keypress("q", {});
     await running;

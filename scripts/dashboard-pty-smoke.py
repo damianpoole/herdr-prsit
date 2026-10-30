@@ -36,6 +36,10 @@ with tempfile.TemporaryDirectory(prefix='prsit-dashboard-pty-') as tmp:
         os.write(master,b'p');until(lambda:control().get('mode')=='paused','pause did not apply')
         os.write(master,b'r');until(lambda:control().get('mode')=='running','resume did not apply')
         os.write(master,b't');until(lambda:'retryAt' in control(),'retry did not apply')
+        os.write(master,b'u');until(lambda:control().get('mode')=='removed','unwatch did not apply')
+        until(lambda:b'All PRs are unwatched' in output,'unwatched PR was not hidden')
+        os.write(master,b'h');until(lambda:b'UNWATCHED' in output,'history did not reveal the PR')
+        os.write(master,b'r');until(lambda:control().get('mode')=='running','resume from history did not apply')
         fcntl.ioctl(master,termios.TIOCSWINSZ,struct.pack('HHHH',24,72,0,0))
         process.send_signal(signal.SIGWINCH)
         mode=sys.argv[1] if len(sys.argv)>1 else 'quit'
@@ -44,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix='prsit-dashboard-pty-') as tmp:
         until(lambda:process.poll() is not None,'quit did not exit')
         assert process.returncode==0
         assert b'\x1b[?25h' in output and b'\x1b[?1049l' in output,'terminal was not restored'
-        print('PTY smoke passed: render, stopped status, pause, resume, retry, quit, cursor/screen restoration; local fixture only.')
+        print('PTY smoke passed: render, stopped status, pause, resume, retry, unwatch, history, quit, cursor/screen restoration; local fixture only.')
     finally:
         if process.poll() is None:
             process.terminate()

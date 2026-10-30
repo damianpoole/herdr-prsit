@@ -1,4 +1,4 @@
-import { activityOffset, dashboardTerminal } from "./dashboard-ui.js";
+import { activityOffset, dashboardEntries, dashboardTerminal } from "./dashboard-ui.js";
 export { renderDashboard } from "./dashboard-ui.js";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
@@ -29,6 +29,7 @@ export interface DashboardState {
   message: string;
   watchOnly?: boolean;
   logOffset?: number;
+  showUnwatched?: boolean;
 }
 export async function recentActivity(w: Watch, count = 12): Promise<string[]> {
   try {
@@ -85,6 +86,14 @@ export async function dashboard(watch?: Watch) {
   const clampScroll = (offset = state.logOffset ?? 0) => {
     state.logOffset = activityOffset(state, process.stdout.columns, process.stdout.rows, offset);
   };
+  const reconcileSelection = () => {
+    const entries = dashboardEntries(state);
+    if (!entries.some((entry) => entry.watch.id === state.selected)) {
+      state.selected = entries[0]?.watch.id;
+      state.logOffset = 0;
+      state.logs = [];
+    }
+  };
   const keypress = (input: string, inkKey: import("ink").Key) => {
     const key = {
       name: inkKey.upArrow ? "up" : inkKey.downArrow ? "down" : input,
@@ -100,24 +109,31 @@ export async function dashboard(watch?: Watch) {
       stop();
       return;
     }
+    if (key.name === "h" && !state.watchOnly) {
+      state.showUnwatched = !state.showUnwatched;
+      reconcileSelection();
+      view?.update();
+      return;
+    }
+    const entries = dashboardEntries(state);
     const index = Math.max(
       0,
-      state.entries.findIndex((e) => e.watch.id === state.selected),
+      entries.findIndex((e) => e.watch.id === state.selected),
     );
     if (["up", "k", "down", "j"].includes(key.name ?? "")) {
       const next = Math.max(
         0,
-        Math.min(state.entries.length - 1, index + (["up", "k"].includes(key.name!) ? -1 : 1)),
+        Math.min(entries.length - 1, index + (["up", "k"].includes(key.name!) ? -1 : 1)),
       );
-      state.selected = state.entries[next]?.watch.id;
+      state.selected = entries[next]?.watch.id;
       state.logs = [];
       state.logOffset = 0;
       view?.update();
       return;
     }
-    if (["p", "r", "t", "o"].includes(key.name ?? "") && !action && state.entries[index]) {
+    if (["p", "r", "t", "o", "u"].includes(key.name ?? "") && !action && entries[index]) {
       // Pin the watch at keypress time; a refresh must not redirect an action.
-      action = { watch: state.entries[index].watch, key: key.name! };
+      action = { watch: entries[index].watch, key: key.name! };
     }
   };
   const wasRaw = process.stdin.isRaw;
@@ -140,7 +156,7 @@ export async function dashboard(watch?: Watch) {
             if (pending.key === "o") await openView(pending.watch, await viewWorkspace());
             else {
               const command = (
-                { p: "pause", r: "resume", t: "retry" } as Record<string, WatchAction>
+                { p: "pause", r: "resume", t: "retry", u: "unwatch" } as Record<string, WatchAction>
               )[pending.key];
               await controlWatch(pending.watch, command);
               state.message = `${command} requested for ${pending.watch.owner}/${pending.watch.repo} #${pending.watch.number}`;
@@ -153,11 +169,7 @@ export async function dashboard(watch?: Watch) {
         list.sort((a, b) => a.created - b.created || a.id.localeCompare(b.id));
         state.entries = await Promise.all(list.map(watchSnapshot));
         state.running = await ping();
-        if (!state.entries.some((e) => e.watch.id === state.selected)) {
-          state.selected = state.entries[0]?.watch.id;
-          state.logOffset = 0;
-          state.logs = [];
-        }
+        reconcileSelection();
         const selected = state.entries.find((e) => e.watch.id === state.selected);
         const logs = selected ? await recentActivity(selected.watch, 1000) : [];
         // Keep a scrolled view anchored when new lines arrive. End resumes live following.

@@ -73,20 +73,22 @@ herdr plugin action invoke herdr-prsit.dashboard
 
 The dashboard lists watches and their stages, shows the selected PR's status message, repair worktree, and recent activity, and refreshes automatically. It uses Ink for incremental terminal rendering, with highlighted selection, coloured stages, and a controller-health header. Wide panes show the watch list beside the selected PR; narrower panes stack them, and very small panes show a compact summary. The per-PR activity view uses the same interface. Stage text remains readable with `NO_COLOR=1`. Its controls are:
 
-| Key                     | Action                                                 |
-| ----------------------- | ------------------------------------------------------ |
-| `↑` / `↓` or `j` / `k`  | Select a PR                                            |
-| `p`                     | Pause the selected watch                               |
-| `r`                     | Resume its checkpointed work                           |
-| `t`                     | Request retry using the existing blocked-work protocol |
-| `o`                     | Focus or reopen its activity pane                      |
-| `Page Up` / `Page Down` | Scroll recent activity in five-line steps              |
-| `End`                   | Return to following live activity                      |
-| `q` / `Ctrl+C`          | Close this view; leave the controller running          |
+| Key                     | Action                                                   |
+| ----------------------- | -------------------------------------------------------- |
+| `↑` / `↓` or `j` / `k`  | Select a PR                                              |
+| `p`                     | Pause the selected watch                                 |
+| `r`                     | Resume its checkpointed work                             |
+| `t`                     | Request retry using the existing blocked-work protocol   |
+| `o`                     | Focus or reopen its activity pane                        |
+| `u`                     | Unwatch the selected PR; retain its history and worktree |
+| `h`                     | Show or hide unwatched PRs in the dashboard              |
+| `Page Up` / `Page Down` | Scroll recent activity in five-line steps                |
+| `End`                   | Return to following live activity                        |
+| `q` / `Ctrl+C`          | Close this view; leave the controller running            |
 
 Activity scrolling is bounded to the latest 32 KiB / 1,000 lines of the selected watch’s log. Selecting a different PR resets to live activity. For complete history, use `prsit logs`.
 
-Use `prsit watch` to register new PRs and `prsit unwatch` to remove them. There is no merge button or second repair engine in the dashboard. All controls use the same local state as the CLI. A dashboard opened while the controller is stopped can queue pause/resume/retry controls, but work only progresses when the controller runs.
+Use `prsit watch` to register new PRs. Press `u` in the dashboard (or use `prsit unwatch`) to stop watching the selected PR. Unwatched PRs are hidden by default; press `h` to show their history, then `r` to resume a selected watch. The history toggle lasts for the current dashboard session. Per-PR activity panes remain visible until closed. There is no merge button or second repair engine in the dashboard. All controls use the same local state as the CLI. A dashboard opened while the controller is stopped can queue pause/resume/retry controls, but work only progresses when the controller runs.
 
 The plugin's manifest is `herdr-plugin.toml`; it declares controller, dashboard, and per-PR pane entrypoints and two menu actions. It adds no startup daemon or hosted service. Plugin and CLI share `$PRSIT_HOME` (or the usual default), Pi credentials, and existing watch history. For a custom state directory, launch the plugin actions with the same `PRSIT_HOME` as the controller; menu actions use the environment inherited by Herdr. Background UI errors retry independently of runtime supervision. Closing a PR pane removes its sidebar entry; `prsit open` brings it back. After restarting Herdr, restart `prsit run` to restore monitoring and views.
 
