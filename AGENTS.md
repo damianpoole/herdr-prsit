@@ -1,7 +1,8 @@
 # Working on herdr-prsit
 
-This is a local, terminal-first PR babysitter for Herdr on Linux and macOS. Read
-README.md for the command contract, merge gate, recovery behavior, and limitations.
+This is a local PR babysitter with a native herdr-app mod and standalone CLI for
+Linux and macOS. Read README.md for installation, the command contract, merge
+gate, recovery behavior, and limitations.
 
 ## Design boundaries
 
@@ -20,11 +21,12 @@ README.md for the command contract, merge gate, recovery behavior, and limitatio
 
 ## Verification
 
-Run verification locally only. Do not add GitHub Actions workflows or other hosted
-CI jobs. Use the scripts in package.json for build, type checking, and tests, with
-focused regression coverage for behavioral changes. Default tests must use local
-fixtures rather than modifying live PRs or invoking paid model providers. The
-native provider smoke test is opt-in.
+Run verification locally and in GitHub Actions. Hosted CI is authorized for tests,
+formatting, lint, build, and type checking using the scripts in package.json. Add
+focused regression coverage for behavioral changes. Default tests and hosted CI
+must use local fixtures rather than modifying live PRs or invoking paid model
+providers, and must not require provider credentials. The native provider smoke
+test remains opt-in and must not run in default CI.
 
 Linux can be verified here; report macOS compatibility as unverified until tested
 on a Mac. Keep process handling, paths, and CLI integrations portable to both.

@@ -1,7 +1,7 @@
 {
   "name": "herdr-prsit",
   "version": "0.1.0",
-  "description": "A durable terminal-first GitHub PR babysitter for Herdr",
+  "description": "A native herdr-app mod and durable GitHub PR babysitter",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -14,11 +14,18 @@
     "dist",
     "README.md",
     "LICENSE",
-    "herdr-plugin.toml"
+    "mods/prsit/*.js",
+    "mods/prsit/mod.json",
+    "scripts/install.mjs",
+    "scripts/layout.mjs",
+    "scripts/build.mjs",
+    "RECIPE.md",
+    "preview.png"
   ],
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "node scripts/build.mjs",
+    "install:mod": "node scripts/install.mjs",
     "test": "npm run build && node --test --test-concurrency=1 test/*.test.mjs",
     "check": "tsc --noEmit",
     "prepack": "npm run build",

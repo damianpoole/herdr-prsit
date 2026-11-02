@@ -3,16 +3,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { unlink } from "node:fs/promises";
 import { home, hash } from "./io.js";
-import { currentWorkspace, herdrSession } from "./herdr.js";
 export const socketPath = () =>
   join(tmpdir(), `prsit-${process.getuid?.() ?? "user"}-${hash(home()).slice(0, 16)}.sock`);
-export async function controllerInfo(): Promise<
-  { pid: number; workspace?: string; session?: string } | undefined
-> {
+export async function controllerInfo(): Promise<{ pid: number } | undefined> {
   return new Promise((resolve) => {
     const socket = createConnection(socketPath());
     socket.setTimeout(1000);
-    const finish = (value: { pid: number; workspace?: string; session?: string } | undefined) => {
+    const finish = (value: { pid: number } | undefined) => {
       socket.destroy();
       resolve(value);
     };
@@ -53,12 +50,11 @@ export async function stopController(): Promise<boolean> {
   }
   return true;
 }
-export async function acquire(workspace?: string): Promise<Server> {
-  const session = workspace ? herdrSession() : undefined;
+export async function acquire(): Promise<Server> {
   const server = createServer((s) => {
     s.on("error", () => {});
     s.resume();
-    s.end(JSON.stringify({ pid: process.pid, workspace, ...(session ? { session } : {}) }) + "\n");
+    s.end(JSON.stringify({ pid: process.pid }) + "\n");
   });
   const listen = () =>
     new Promise<void>((resolve, reject) => {
@@ -87,16 +83,4 @@ export async function acquire(workspace?: string): Promise<Server> {
     await listen();
   }
   return server;
-}
-
-export async function viewWorkspace() {
-  const controller = await controllerInfo();
-  if (controller?.workspace) {
-    if (controller.session !== herdrSession())
-      throw new Error(
-        "The controller is in another Herdr session. Open its session to view these PRs.",
-      );
-    return controller.workspace;
-  }
-  return currentWorkspace();
 }

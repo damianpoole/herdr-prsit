@@ -12,21 +12,24 @@ import { discover } from "./git.js";
 import { resolvePR } from "./pr.js";
 import { models, modelRef } from "./agent.js";
 import { daemon } from "./daemon.js";
-import { ping, viewWorkspace, stopController } from "./controller.js";
+import { ping, stopController } from "./controller.js";
 import { controlWatch, type WatchAction } from "./presentation.js";
 import { dashboard } from "./dashboard.js";
-import { openView } from "./herdr.js";
+import { modSnapshot } from "./mod-api.js";
+import { startController, openView } from "./app.js";
 import type { Watch, State } from "./types.js";
 import type { Control } from "./runtime.js";
 
 const help = `herdr-prsit — durable PR babysitting in your terminal
 
-  prsit run [--headless]                    Run the controller inside Herdr
+  prsit run [--headless]                    Run the controller (no UI ownership)
   prsit watch <number | URL> [options]    Register a PR for autonomous repair and merge
+  prsit start                             Start or reconnect to a persistent hc controller
   prsit stop                              Checkpoint and stop the controller
   prsit dashboard                         Interactive PR list and controls
   prsit status [--json]                     Show all watches
-  prsit open <watch ID | PR number>         Focus or reopen the PR sidebar entry
+  prsit snapshot [watch]                    Versioned JSON for native mod clients
+  prsit open <watch ID | PR number>         Open a native PR detail tab
   prsit logs <watch ID | PR number> [-f]     Show the activity log
   prsit pause <watch>                       Checkpoint and pause work
   prsit resume <watch>                      Resume checkpointed work
@@ -84,7 +87,11 @@ export async function main(args = process.argv.slice(2)) {
     return;
   }
   if (command === "run") {
-    await daemon(v.headless);
+    await daemon();
+    return;
+  }
+  if (command === "start") {
+    console.log(JSON.stringify(await startController()));
     return;
   }
   if (command === "stop") {
@@ -100,7 +107,7 @@ export async function main(args = process.argv.slice(2)) {
     return;
   }
   if (command === "view") {
-    await dashboard(await findWatch(process.env.PRSIT_WATCH_ID ?? ""));
+    await dashboard(await findWatch(p[1] ?? ""));
     return;
   }
   if (command === "watch") {
@@ -179,7 +186,11 @@ export async function main(args = process.argv.slice(2)) {
     console.log(
       `Watching ${pr.url}\nID: ${id}\nRepo: ${w.path}\nAgent: ${agent} (${model})\nPoll: ${w.interval / 60000} minutes`,
     );
-    if (!(await ping())) console.log("Start the controller in a Herdr pane: prsit run");
+    if (!(await ping())) console.log("Start the persistent controller: prsit start (or prsit run)");
+    return;
+  }
+  if (command === "snapshot") {
+    console.log(JSON.stringify(await modSnapshot(p[1])));
     return;
   }
   if (command === "status") {
@@ -216,9 +227,7 @@ export async function main(args = process.argv.slice(2)) {
     return;
   }
   if (command === "open") {
-    console.log(
-      `Herdr pane: ${await openView(await findWatch(p[1] ?? ""), await viewWorkspace())}`,
-    );
+    console.log(await openView(await findWatch(p[1] ?? "")));
     return;
   }
   if (command === "logs") {
@@ -266,7 +275,8 @@ export async function main(args = process.argv.slice(2)) {
     for (const [bin, args] of [
       ["git", ["--version"]],
       ["gh", ["--version"]],
-      ["herdr", ["--version"]],
+      ["herdr-app", ["--version"]],
+      ["hc", ["--version"]],
     ] as const) {
       try {
         console.log((await exec(bin, [...args])).stdout.split("\n")[0]);
@@ -274,9 +284,7 @@ export async function main(args = process.argv.slice(2)) {
         console.log(String(e));
       }
     }
-    console.log(
-      `Node ${process.version}; Herdr pane: ${process.env.HERDR_ENV === "1" ? "yes" : "no"}`,
-    );
+    console.log(`Node ${process.version}; hc terminal: ${process.env.HC_TERMINAL_ID ?? "none"}`);
     try {
       console.log(`GitHub: ${(await exec("gh", ["api", "user", "--jq", ".login"])).stdout.trim()}`);
     } catch (e) {
