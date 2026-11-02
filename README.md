@@ -16,8 +16,8 @@ Ship-it is optional. The CLI and Ink terminal dashboard remain available.
 
 Requires Linux or macOS, Node **22.19+**, Git, authenticated `gh`, Pi model
 credentials, and current **herdr-app + herdr-core (`hc`)**. The old
-`herdr` / herdr-tui plugin API is no longer used. Linux verification is local;
-macOS remains unverified until tested on a Mac.
+`herdr` / herdr-tui plugin API is no longer used. Linux is verified locally and
+in CI; macOS remains unverified until tested on a Mac.
 
 ```sh
 git clone https://github.com/damianpoole/herdr-prsit.git
@@ -276,6 +276,13 @@ The controller must be running on an awake, connected machine. A controller star
 The agent executes local shell commands as you do. Run it against repositories and PR code you trust. A Git worktree is isolation from your working branch, not a security sandbox. Forks require permission to push to their head repository; otherwise the watch blocks. Repository hooks, signing, missing dependencies, unavailable CI secrets, or explicit provider permission denials may also require attention.
 
 ## Development and verification
+
+GitHub Actions runs on pull requests and pushes to `main`: separate lint,
+formatting and typecheck jobs, plus fixture-based build/tests on Node 22.19.0
+and 24 on Linux. The workflow uses read-only repository permissions, does not
+persist checkout credentials, and requires no provider credentials or secrets.
+It never runs the opt-in provider smoke test. Native rendering remains a local
+check with herdr-app; CI tests mod logic and isolated installation fixtures.
 
 ```sh
 npm run lint

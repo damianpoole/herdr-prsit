@@ -70,5 +70,7 @@ verification. No restart/stop command targeted the user's core.
   panes are not reused without observable backend/state-directory identity.
 - Ship-it integration is layout/visual composition as clarified by the user,
   not an upstream patch or automatic PR-created handoff.
-- Hosted test/format/lint CI is still pending. AGENTS.md now records the user's
-  authorization, but no hosted workflow or successful hosted check is claimed.
+- `.github/workflows/ci.yml` now runs lint, formatting, typecheck and fixture-based
+  build/tests on pull requests and `main`. Tests cover Node 22.19.0 and 24 on
+  Linux. Hosted results are recorded on PR #9; native rendering remains locally
+  verified rather than a hosted UI check.
