@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderDashboard, recentActivity } from "../dist/dashboard.js";
+import { renderDashboard as renderColoredDashboard, recentActivity } from "../dist/dashboard.js";
+import { stripVTControlCharacters } from "node:util";
+// Layout assertions must not depend on the test runner's terminal capabilities.
+const renderDashboard = (...args) => stripVTControlCharacters(renderColoredDashboard(...args));
 import { controlWatch, watchSnapshot } from "../dist/presentation.js";
 import { watchDir } from "../dist/io.js";
 
@@ -25,6 +28,9 @@ test("dashboard bounds the viewport, keeps the selected PR visible, and strips t
     logs: ["safe", "\x1b[2Jbad\x1b]52;c;c2VjcmV0\x07"],
     message: "pause requested",
   };
+  const raw = renderColoredDashboard(state, 80, 24);
+  assert.ok(!raw.includes("\x1b[2J"));
+  assert.ok(!raw.includes("\x1b]52;"));
   const text = renderDashboard(state, 80, 24);
   assert.match(text, /PR SITTER DASHBOARD/);
   assert.match(renderDashboard({ ...state, watchOnly: true }, 80, 24), /PR ACTIVITY/);

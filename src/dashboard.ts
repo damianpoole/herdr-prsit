@@ -4,14 +4,8 @@ import { open } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { watches, watchDir } from "./io.js";
-import { ping, viewWorkspace } from "./controller.js";
-import {
-  openView,
-  requireHerdr,
-  SidebarReporter,
-  markPluginView,
-  releasePluginView,
-} from "./herdr.js";
+import { ping } from "./controller.js";
+import { openView } from "./app.js";
 import {
   controlWatch,
   plain,
@@ -56,12 +50,6 @@ export async function dashboard(watch?: Watch) {
     throw new Error(
       "The dashboard needs an interactive terminal. Use prsit status --json for scripts.",
     );
-  const pane = process.env.HERDR_PANE_ID;
-  if (watch) {
-    requireHerdr();
-    if (!pane) throw new Error("Herdr did not provide HERDR_PANE_ID for this PR view.");
-  }
-  const reporter = watch ? new SidebarReporter(pane!, watch) : undefined;
   const state: DashboardState = {
     entries: [],
     selected: watch?.id,
@@ -72,14 +60,6 @@ export async function dashboard(watch?: Watch) {
   };
   let stopped = false;
   let action: { watch: Watch; key: string } | undefined;
-  let reportAfter = 0;
-  // Opening the pane already publishes identity; updates can also partially
-  // publish before failing. Release even if unwatch precedes the first update.
-  let releasePending = !!reporter;
-  let retiring = false;
-  const pluginDashboard =
-    !watch && process.env.HERDR_PLUGIN_ENTRYPOINT_ID === "dashboard" && !!pane;
-  let dashboardMarked = 0;
   const stop = () => {
     stopped = true;
   };
@@ -153,7 +133,7 @@ export async function dashboard(watch?: Watch) {
         if (action) {
           const pending = action;
           try {
-            if (pending.key === "o") await openView(pending.watch, await viewWorkspace());
+            if (pending.key === "o") await openView(pending.watch);
             else {
               const command = (
                 { p: "pause", r: "resume", t: "retry", u: "unwatch" } as Record<string, WatchAction>
@@ -181,28 +161,6 @@ export async function dashboard(watch?: Watch) {
           state.logs = logs;
           clampScroll();
         }
-        if (pluginDashboard && Date.now() - dashboardMarked >= 10_000) {
-          await markPluginView("dashboard", pane!);
-          dashboardMarked = Date.now();
-        }
-        if (reporter && Date.now() >= reportAfter) {
-          try {
-            const entry = state.entries[0];
-            if (entry.control?.mode === "removed") retiring = true;
-            // Retirement is permanent; retry cleanup even after resume.
-            if (retiring) {
-              if (releasePending) await reporter.release();
-              releasePending = false;
-            } else {
-              releasePending = true;
-              await reporter.update(entry, state.running);
-              if (state.message.startsWith("Sidebar unavailable:")) state.message = "";
-            }
-          } catch (e) {
-            state.message = `Sidebar unavailable: ${String(e)}`;
-            reportAfter = Date.now() + 10_000;
-          }
-        }
       } catch (e) {
         state.message = String(e);
       }
@@ -217,7 +175,5 @@ export async function dashboard(watch?: Watch) {
     process.removeListener("SIGINT", stop);
     process.removeListener("SIGTERM", stop);
     process.removeListener("SIGHUP", stop);
-    if (reporter) await reporter.release().catch(() => {});
-    if (pluginDashboard) await releasePluginView("dashboard", pane!).catch(() => {});
   }
 }
